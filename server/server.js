@@ -175,6 +175,7 @@ function serveStatic(req, res) {
 
 // ---------- 去水印 sidecar（Flask + OpenCV） ----------
 const WM_APP = path.join(ROOT, 'tools', 'watermark-remover', 'app.py');
+const WM_BASE_PATH = process.env.WM_BASE_PATH || '';
 const WM_PORT = parseInt(process.env.WM_PORT || '5001', 10);
 let wmChild = null;
 
@@ -202,7 +203,7 @@ function startWatermark() {
   }
   try {
   wmChild = spawn(py, [WM_APP], {
-    env: { ...process.env, WM_PORT: String(WM_PORT), WM_BASE_PATH: process.env.WM_BASE_PATH || '' },
+    env: { ...process.env, WM_PORT: String(WM_PORT), WM_BASE_PATH },
     cwd: path.dirname(WM_APP),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -253,7 +254,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/api/wm-status' && req.method === 'GET') {
-    const req2 = http.get({ host: '127.0.0.1', port: WM_PORT, path: '/', timeout: 1500 }, (r) => {
+    const wmHealthPath = WM_BASE_PATH ? `${WM_BASE_PATH}/` : '/';
+    const req2 = http.get({ host: '127.0.0.1', port: WM_PORT, path: wmHealthPath, timeout: 1500 }, (r) => {
       r.resume();
       json(res, 200, { ok: r.statusCode < 400 });
     });
