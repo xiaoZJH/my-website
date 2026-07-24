@@ -15,6 +15,12 @@
   <div class="landing" id="landing" aria-hidden="false">
     <canvas class="landing__canvas" id="landingCanvas" aria-hidden="true"></canvas>
     <div class="landing__vignette" aria-hidden="true"></div>
+    <div class="landing__topbar">
+      <div class="landing__auth" id="landingAuth">
+        <button class="landing__top-btn" id="landingSignin" type="button">Sign in</button>
+        <button class="landing__top-btn" id="landingLogout" type="button">Log off</button>
+      </div>
+    </div>
     <div class="landing__content">
       <div class="landing__brand">
         <span class="landing__mark" aria-hidden="true"></span>
@@ -26,49 +32,11 @@
       </h1>
       <p class="landing__lead">本地优先 · 隐私友好 · 随手可用</p>
 
-      <!-- 登录 / 注册 gate -->
-      <div class="gate" id="gate">
-        <h2 class="gate__title" id="authTitle">登录</h2>
-        <div class="gate__tabs" role="tablist" aria-label="登录方式">
-          <button class="gate__tab is-active" data-auth-tab="login" type="button" role="tab" aria-selected="true">登录</button>
-          <button class="gate__tab" data-auth-tab="register" type="button" role="tab" aria-selected="false">注册</button>
-        </div>
-        <form class="gate__form" id="authForm" novalidate>
-          <div class="gate__field" data-field="identifier">
-            <label for="authIdentifier">账号</label>
-            <input id="authIdentifier" type="text" name="identifier" autocomplete="username" placeholder="用户名 / 邮箱 / 手机号" />
-          </div>
-          <div class="gate__field" data-field="username">
-            <label for="authUsername">用户名</label>
-            <input id="authUsername" type="text" name="username" autocomplete="username" placeholder="3-20 位字母、数字或下划线" />
-          </div>
-          <div class="gate__field" data-field="email">
-            <label for="authEmail">邮箱（可选）</label>
-            <input id="authEmail" type="email" name="email" autocomplete="email" placeholder="you@example.com" />
-          </div>
-          <div class="gate__field" data-field="phone">
-            <label for="authPhone">手机号</label>
-            <input id="authPhone" type="tel" name="phone" autocomplete="tel" placeholder="11 位手机号" />
-          </div>
-          <div class="gate__field" data-field="code">
-            <label for="authCode">短信验证码</label>
-            <div class="gate__code-row">
-              <input id="authCode" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" />
-              <button type="button" class="gate__code-btn" data-auth-send>获取验证码</button>
-            </div>
-          </div>
-          <div class="gate__field" data-field="password">
-            <label for="authPassword">密码</label>
-            <input id="authPassword" type="password" name="password" autocomplete="current-password" placeholder="至少 8 位" />
-          </div>
-          <div class="gate__error" id="authError" hidden></div>
-          <button type="submit" class="gate__submit" id="authSubmit">登录</button>
-          <p class="gate__hint" id="authHint"></p>
-        </form>
-        <div class="gate__alt">
-          <button type="button" class="gate__link" data-auth-mode="code">使用手机号 + 短信验证码登录</button>
-        </div>
-      </div>
+      <button class="landing__cta" id="enterBtn" type="button">
+        <span>进入网站</span>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <p class="landing__hint">点击按钮或按 Enter 键进入</p>
     </div>
   </div>
 
@@ -127,7 +95,106 @@
     </aside>
   </div>
 
-  <!-- 登录 gate 已集成在 landing 中 -->
+  <!-- 登录 / 注册 Modal：台灯吉祥物 + 霓虹玻璃卡片 -->
+  <div class="auth-modal" id="authModal" aria-hidden="true">
+    <div class="auth-modal__scrim" data-auth-close></div>
+    <div class="auth-modal__stage" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <button class="auth-modal__close" type="button" data-auth-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+
+      <div class="auth-modal__lamp lamp" id="authLamp" aria-hidden="true">
+        <svg class="lamp__svg" viewBox="0 0 220 420" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="shadeGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="var(--lamp-light)"/>
+              <stop offset="100%" stop-color="var(--lamp-dark)"/>
+            </linearGradient>
+            <radialGradient id="bulbGlow" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0%" stop-color="#fff" stop-opacity="0.95"/>
+              <stop offset="55%" stop-color="var(--lamp-color)" stop-opacity="0.55"/>
+              <stop offset="100%" stop-color="var(--lamp-color)" stop-opacity="0"/>
+            </radialGradient>
+            <filter id="beamBlur" x="-50%" y="-20%" width="200%" height="140%">
+              <feGaussianBlur stdDeviation="10"/>
+            </filter>
+          </defs>
+          <!-- 天花板吊线 -->
+          <line x1="110" y1="0" x2="110" y2="48" class="lamp__cord-line"/>
+          <!-- 灯罩 -->
+          <path d="M70 48 L150 48 L185 150 L35 150 Z" fill="url(#shadeGrad)" class="lamp__shade-shape"/>
+          <!-- 灯泡光晕 -->
+          <ellipse cx="110" cy="140" rx="70" ry="16" fill="url(#bulbGlow)" class="lamp__bulb"/>
+          <!-- 光束 -->
+          <path d="M110 150 L260 420 L-40 420 Z" fill="rgba(255,255,255,0.10)" filter="url(#beamBlur)" class="lamp__beam-svg"/>
+          <!-- 拉绳 -->
+          <line x1="150" y1="130" x2="150" y2="260" class="lamp__pull-svgline"/>
+          <circle cx="150" cy="270" r="9" class="lamp__pull-svgknob"/>
+          <!-- 脸 -->
+          <g class="lamp__face">
+            <circle cx="92" cy="95" r="7" class="lamp__eye"/>
+            <circle cx="128" cy="95" r="7" class="lamp__eye"/>
+            <path d="M96 115 Q110 124 124 115" class="lamp__mouth" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          </g>
+        </svg>
+        <button class="lamp__pull" id="lampPull" type="button" aria-label="切换灯光">
+          <span class="lamp__pull-text">下拉开灯</span>
+        </button>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-card__glow" aria-hidden="true"></div>
+        <div class="auth-card__inner">
+          <h2 class="auth-card__title" id="authTitle">欢迎回来</h2>
+          <p class="auth-card__subtitle">Welcome back</p>
+
+          <div class="auth-card__tabs" role="tablist" aria-label="登录方式">
+            <button class="auth-card__tab is-active" data-auth-tab="login" type="button" role="tab" aria-selected="true">登录</button>
+            <button class="auth-card__tab" data-auth-tab="register" type="button" role="tab" aria-selected="false">注册</button>
+          </div>
+
+          <form class="auth-card__form" id="authForm" novalidate>
+            <div class="auth-card__field" data-field="identifier">
+              <label for="authIdentifier">账号</label>
+              <input id="authIdentifier" type="text" name="identifier" autocomplete="username" placeholder="请输入账号" />
+            </div>
+            <div class="auth-card__field" data-field="username">
+              <label for="authUsername">用户名</label>
+              <input id="authUsername" type="text" name="username" autocomplete="username" placeholder="3-20 位字母、数字或下划线" />
+            </div>
+            <div class="auth-card__field" data-field="email">
+              <label for="authEmail">邮箱（可选）</label>
+              <input id="authEmail" type="email" name="email" autocomplete="email" placeholder="you@example.com" />
+            </div>
+            <div class="auth-card__field" data-field="phone">
+              <label for="authPhone">手机号</label>
+              <input id="authPhone" type="tel" name="phone" autocomplete="tel" placeholder="11 位手机号" />
+            </div>
+            <div class="auth-card__field" data-field="code">
+              <label for="authCode">短信验证码</label>
+              <div class="auth-card__code-row">
+                <input id="authCode" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" />
+                <button type="button" class="auth-card__code-btn" data-auth-send>获取验证码</button>
+              </div>
+            </div>
+            <div class="auth-card__field" data-field="password">
+              <label for="authPassword">密码</label>
+              <input id="authPassword" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" />
+            </div>
+            <div class="auth-card__error" id="authError" hidden></div>
+            <button type="submit" class="auth-card__submit" id="authSubmit">登 录</button>
+            <p class="auth-card__hint" id="authHint"></p>
+          </form>
+
+          <div class="auth-card__alt">
+            <button type="button" class="auth-card__link" data-auth-mode="code">短信验证码登录</button>
+            <span class="auth-card__dot" aria-hidden="true"></span>
+            <button type="button" class="auth-card__link" data-auth-mode="forgot">忘记密码？</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/js/tools.js"></script>
   <script src="/js/app.js"></script>

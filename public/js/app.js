@@ -43,11 +43,19 @@
     ],
   };
 
-  /* ---------- Landing / 登录 Gate ---------- */
+  /* ---------- Landing / 登录入口 ---------- */
   function initLanding() {
     if (!landingCanvas || !landing) return;
     landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
-    setAuthMode('login');
+    if (!enterBtn) return;
+    const onEnter = () => {
+      if (landing.classList.contains('is-leaving')) return;
+      if (currentUser) enterSite(); else openAuth('login');
+    };
+    enterBtn.addEventListener('click', onEnter);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !landing.classList.contains('is-leaving')) onEnter();
+    });
   }
 
   function enterSite() {
@@ -675,7 +683,8 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
-  /* ---------- Auth（登录 / 注册 Gate） ---------- */
+  /* ---------- Auth（登录 / 注册 Modal） ---------- */
+  const authModal = document.getElementById('authModal');
   const authArea = document.getElementById('authArea');
   const authForm = document.getElementById('authForm');
   const authError = document.getElementById('authError');
@@ -697,33 +706,94 @@ C:\\path\\to\\python -m venv .venv
   function setAuthMode(mode) {
     if (!authForm) return;
     authMode = mode;
-    document.querySelectorAll('.gate__tab').forEach((t) => {
+    document.querySelectorAll('.auth-card__tab').forEach((t) => {
       const isActive = t.dataset.authTab === (mode === 'login-code' ? 'login' : mode);
       t.classList.toggle('is-active', isActive);
       t.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
-    authForm.querySelectorAll('.gate__field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
+    authForm.querySelectorAll('.auth-card__field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
     const title = document.getElementById('authTitle');
     if (title) {
-      if (mode === 'login') title.textContent = '登录';
-      else if (mode === 'login-code') title.textContent = '验证码登录';
-      else title.textContent = '创建账户';
+      if (mode === 'login') { title.textContent = '欢迎回来'; }
+      else if (mode === 'login-code') { title.textContent = '验证码登录'; }
+      else { title.textContent = '创建账户'; }
     }
-    if (authSubmit) authSubmit.textContent = mode === 'register' ? '注册' : (mode === 'login-code' ? '验证码登录' : '登录');
+    const sub = document.querySelector('.auth-card__subtitle');
+    if (sub) {
+      if (mode === 'login') sub.textContent = 'Welcome back';
+      else if (mode === 'login-code') sub.textContent = 'Login with SMS';
+      else sub.textContent = 'Create your account';
+    }
+    if (authSubmit) authSubmit.textContent = mode === 'register' ? '注 册' : (mode === 'login-code' ? '验证码登录' : '登 录');
     if (authHint) authHint.textContent = mode === 'login-code' ? '输入手机号与收到的验证码即可登录' : (mode === 'register' ? '手机号可留空；填写后点"获取验证码"可绑定并验证手机号' : '');
     authError.hidden = true;
+  }
+
+  function openAuth(mode) {
+    setAuthMode(mode || 'login');
+    if (!authModal) return;
+    authModal.classList.add('is-open', 'is-green');
+    authModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    startLampCycle();
+    const first = authForm?.querySelector('.auth-card__field:not([hidden]) input');
+    if (first) setTimeout(() => first.focus(), 80);
+  }
+  function closeAuth() {
+    if (!authModal || !authModal.classList.contains('is-open')) return;
+    authModal.classList.remove('is-open');
+    authModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    stopLampCycle();
+    try { authForm?.reset(); } catch (_) {}
+    authError.hidden = true;
+  }
+
+  const LAMP_COLORS = ['is-green', 'is-orange', 'is-red', 'is-cyan'];
+  let lampCycleTimer = null;
+  function startLampCycle() {
+    stopLampCycle();
+    if (!authModal) return;
+    LAMP_COLORS.forEach((c) => authModal.classList.remove(c));
+    authModal.classList.add('is-green');
+    let i = 0;
+    lampCycleTimer = setInterval(() => {
+      if (!authModal) return;
+      authModal.classList.remove(LAMP_COLORS[i]);
+      i = (i + 1) % LAMP_COLORS.length;
+      authModal.classList.add(LAMP_COLORS[i]);
+    }, 5200);
+  }
+  function stopLampCycle() {
+    if (lampCycleTimer) { clearInterval(lampCycleTimer); lampCycleTimer = null; }
   }
 
   function showAuthError(msg) {
     authError.textContent = msg;
     authError.hidden = false;
-    const gate = document.getElementById('gate');
-    if (gate && !gate.classList.contains('is-success')) {
-      gate.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-in-out' });
+    const card = document.querySelector('.auth-card');
+    if (card && !card.classList.contains('is-success')) {
+      card.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-in-out' });
     }
+    const lamp = document.getElementById('authLamp');
+    if (lamp) { lamp.classList.add('is-sad'); setTimeout(() => lamp.classList.remove('is-sad'), 1200); }
   }
 
   function renderAuthArea() {
+    const landingAuth = document.getElementById('landingAuth');
+    if (landingAuth) {
+      if (currentUser) {
+        const name = aesc(currentUser.display_name || currentUser.username);
+        landingAuth.innerHTML =
+          '<span class="landing__user">' + name + '</span>' +
+          '<button class="landing__top-btn" id="landingLogout" type="button">Log off</button>' +
+          '<button class="landing__top-btn is-ghost" id="landingSignin" type="button" hidden>Sign in</button>';
+      } else {
+        landingAuth.innerHTML =
+          '<button class="landing__top-btn" id="landingSignin" type="button">Sign in</button>' +
+          '<button class="landing__top-btn is-ghost" id="landingLogout" type="button" disabled>Log off</button>';
+      }
+    }
     if (!authArea) return;
     if (currentUser) {
       const initial = aesc((currentUser.display_name || currentUser.username || 'U').slice(0, 1).toUpperCase());
@@ -735,7 +805,7 @@ C:\\path\\to\\python -m venv .venv
           '<button class="user-chip__logout" id="authLogout" type="button" title="退出登录">退出</button>' +
         '</div>';
     } else {
-      authArea.innerHTML = '';
+      authArea.innerHTML = '<button class="auth-btn" id="authLoginBtn" type="button">登录</button>';
     }
   }
 
@@ -771,11 +841,13 @@ C:\\path\\to\\python -m venv .venv
     if (res.ok && res.data.user) {
       currentUser = res.data.user;
       renderAuthArea();
-      const gate = document.getElementById('gate');
-      if (gate) {
-        gate.classList.add('is-success');
-        await new Promise((resolve) => setTimeout(resolve, 450));
+      const card = document.querySelector('.auth-card');
+      if (card) {
+        card.classList.add('is-success');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        card.classList.remove('is-success');
       }
+      closeAuth();
       enterSite();
     } else {
       showAuthError((res.data && res.data.error) || '操作失败，请重试');
@@ -801,7 +873,19 @@ C:\\path\\to\\python -m venv .venv
   });
 
   document.addEventListener('click', (e) => {
-    if (e.target.closest('#authLogout')) {
+    if (e.target.closest('#authLoginBtn') || e.target.closest('#landingSignin')) { openAuth('login'); return; }
+    if (e.target.closest('#lampPull')) {
+      if (!authModal) return;
+      const cur = LAMP_COLORS.find((c) => authModal.classList.contains(c)) || LAMP_COLORS[0];
+      const next = LAMP_COLORS[(LAMP_COLORS.indexOf(cur) + 1) % LAMP_COLORS.length];
+      authModal.classList.remove(cur); authModal.classList.add(next);
+      const lamp = document.getElementById('authLamp');
+      if (lamp) { lamp.classList.add('is-pulled'); setTimeout(() => lamp.classList.remove('is-pulled'), 350); }
+      stopLampCycle(); startLampCycle();
+      return;
+    }
+    if (e.target.closest('#authLogout') || e.target.closest('#landingLogout')) {
+      if (!currentUser) { showAuthError('当前未登录'); return; }
       api('/api/auth/logout').then(() => {
         currentUser = null;
         renderAuthArea();
@@ -813,7 +897,16 @@ C:\\path\\to\\python -m venv .venv
     const tab = e.target.closest('[data-auth-tab]');
     if (tab) { setAuthMode(tab.dataset.authTab); return; }
     const modeLink = e.target.closest('[data-auth-mode]');
-    if (modeLink) { setAuthMode(modeLink.dataset.authMode); return; }
+    if (modeLink) {
+      if (modeLink.dataset.authMode === 'forgot') {
+        authHint.textContent = '请联系管理员重置密码';
+        return;
+      }
+      setAuthMode(modeLink.dataset.authMode);
+      return;
+    }
+    const close = e.target.closest('[data-auth-close]');
+    if (close) { closeAuth(); return; }
   });
 
   /* ---------- Router ---------- */
