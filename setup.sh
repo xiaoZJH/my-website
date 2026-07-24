@@ -26,6 +26,8 @@ err() { echo -e "${RED}[error]${NC} $1"; exit 1; }
 [ "$(id -u)" -eq 0 ] || err "请使用 sudo 运行本脚本：sudo bash setup.sh"
 
 log "更新系统软件包..."
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 apt-get update -y
 apt-get install -y curl wget git ufw build-essential python3 python3-venv python3-pip python3-dev ffmpeg nginx
 
