@@ -92,6 +92,7 @@
   let isVideoMode = false;
   let videoFile = null;
   let pollingTimer = null;
+  let wmOnline = true;   // 去水印后端(Flask)是否在线
 
   // ---------- 视图切换 ----------
   function show(view) {
@@ -562,6 +563,10 @@
 
   // ---------- 处理入口 ----------
   processBtn.addEventListener("click", async () => {
+    if (!wmOnline) {
+      showToast("去水印后端服务未启动,无法处理(需在服务器安装 Python + OpenCV 并重启 toolbox)");
+      return;
+    }
     syncStrokes();
     // 兜底：若存在未提交的草稿笔触，先提交，避免 iframe 内 pointerup 偶发丢失导致“已涂抹却被判未涂抹”
     if (isDrawing && currentStroke && currentStroke.points.length > 0) endStroke();
@@ -858,6 +863,9 @@
       downloadBtn.href = data.result_url;
       afterImg.onload = () => { initCompare(); showResultSection(singleResult); };
       afterImg.src = data.result_url + "?t=" + Date.now();
+    } catch (err) {
+      console.error(err);
+      showToast("去水印服务未响应,请确认服务器后端已启动(需安装 Python + OpenCV)");
     } finally { setLoading(false); }
   }
 
@@ -882,4 +890,17 @@
       pollVideoTask(data.task_id);
     } catch (err) { showToast("网络错误"); setLoading(false); processBtn.disabled = false; }
   }
+
+  // ---------- 后端健康检测 ----------
+  async function checkWmStatus() {
+    try {
+      const r = await fetch("/api/wm-status");
+      const d = await r.json();
+      wmOnline = !!(d && d.ok);
+    } catch (_) { wmOnline = false; }
+    if (!wmOnline) {
+      showToast("⚠ 去水印后端服务未启动,处理会失败。需在服务器安装 Python + OpenCV 并重启 toolbox。", 5000);
+    }
+  }
+  checkWmStatus();
 })();
