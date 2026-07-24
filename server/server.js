@@ -2,15 +2,17 @@
 
 /**
  * 个人工具箱 · 全栈服务
- * 零外部依赖：Node 内置 http + node:sqlite（真实访问统计）
+ * 零外部依赖：Node 内置 http + node:sqlite（真实访问统计 + 用户账户）
  * 启动：node --experimental-sqlite server/server.js
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { DatabaseSync } = require('node:sqlite');
+const sms = require('./sms');
 
 const PORT = process.env.PORT || 4173;
 const ROOT = path.resolve(__dirname, '..');
@@ -42,6 +44,31 @@ db.exec(`
     reading_min INTEGER NOT NULL DEFAULT 3,
     created_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    email TEXT UNIQUE,
+    phone TEXT UNIQUE,
+    password_hash TEXT,
+    display_name TEXT,
+    phone_verified INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sms_codes (
+    phone TEXT NOT NULL,
+    code TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sms_phone ON sms_codes(phone, purpose);
 `);
 
 function seedIfEmpty() {
@@ -100,6 +127,17 @@ function json(res, code, obj) {
   res.end(body);
 }
 
+function readJson(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      try { resolve(JSON.parse(raw || '{}')); } catch (_) { resolve({}); }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 function getStats() {
   const total = db.prepare('SELECT COUNT(*) AS c FROM visits').get().c;
   const startOfToday = new Date();
@@ -138,6 +176,219 @@ function recordVisit(req) {
   } catch (_) {
     json(req.res, 200, { ok: true });
   }
+}
+
+// ---------- Auth helpers（零依赖：crypto.scrypt + node:sqlite） ----------
+const SESSION_TTL = 30 * 24 * 3600; // 30 天（秒）
+const CODE_TTL = 5 * 60 * 1000;     // 短信验证码有效期（毫秒）
+
+function hashPassword(pw) {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16);
+    crypto.scrypt(pw, salt, 64, (err, derived) => {
+      if (err) return reject(err);
+      resolve('scrypt$' + salt.toString('hex') + '$' + derived.toString('hex'));
+    });
+  });
+}
+
+function verifyPassword(pw, stored) {
+  return new Promise((resolve) => {
+    if (!stored || !stored.startsWith('scrypt$')) return resolve(false);
+    const parts = stored.split('$');
+    const saltHex = parts[1];
+    const hashHex = parts[2];
+    if (!saltHex || !hashHex) return resolve(false);
+    let salt, hash;
+    try { salt = Buffer.from(saltHex, 'hex'); hash = Buffer.from(hashHex, 'hex'); } catch (_) { return resolve(false); }
+    crypto.scrypt(pw, salt, 64, (err, derived) => {
+      if (err) return resolve(false);
+      try { resolve(crypto.timingSafeEqual(derived, hash)); } catch (_) { resolve(false); }
+    });
+  });
+}
+
+function newToken() { return crypto.randomBytes(32).toString('hex'); }
+function genCode() { return String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
+
+function parseCookies(req) {
+  const h = req.headers.cookie;
+  const out = {};
+  if (!h) return out;
+  h.split(';').forEach((p) => {
+    const idx = p.indexOf('=');
+    if (idx < 0) return;
+    const k = p.slice(0, idx).trim();
+    const v = p.slice(idx + 1).trim();
+    out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function cookieSecure(req) {
+  return req.headers['x-forwarded-proto'] === 'https' || process.env.COOKIE_SECURE === '1';
+}
+
+function setSessionCookie(res, token, maxAge, secure) {
+  res.setHeader('Set-Cookie',
+    `tb_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}` + (secure ? '; Secure' : ''));
+}
+function clearSessionCookie(res, secure) {
+  res.setHeader('Set-Cookie',
+    `tb_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0` + (secure ? '; Secure' : ''));
+}
+
+function stripHash(u) { const { password_hash, ...rest } = u; return rest; }
+function publicUser(u) {
+  if (!u) return null;
+  const r = stripHash(u);
+  r.phone_verified = !!r.phone_verified;
+  return r;
+}
+
+async function getCurrentUser(req) {
+  const token = parseCookies(req).tb_session;
+  if (!token) return null;
+  const sess = db.prepare('SELECT * FROM sessions WHERE token=?').get(token);
+  if (!sess) return null;
+  if (sess.expires_at < Date.now()) {
+    db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+    return null;
+  }
+  const user = db.prepare(
+    'SELECT id,username,email,phone,display_name,phone_verified,created_at FROM users WHERE id=?'
+  ).get(sess.user_id);
+  return user || null;
+}
+
+async function createSessionFor(res, req, userId) {
+  const token = newToken();
+  const now = Date.now();
+  const expires = now + SESSION_TTL * 1000;
+  db.prepare('INSERT INTO sessions (token,user_id,created_at,expires_at) VALUES (?,?,?,?)')
+    .run(token, userId, now, expires);
+  setSessionCookie(res, token, SESSION_TTL, cookieSecure(req));
+  return token;
+}
+
+// ---------- Auth handlers ----------
+async function handleRegister(req, res) {
+  const b = await readJson(req);
+  const username = String(b.username || '').trim();
+  const password = String(b.password || '');
+  const email = b.email ? String(b.email).trim() : '';
+  const phone = b.phone ? String(b.phone).trim() : '';
+  const code = b.code ? String(b.code).trim() : '';
+
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return json(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
+  if (password.length < 8) return json(res, 400, { error: '密码至少 8 位' });
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: '邮箱格式不正确' });
+  if (phone && !/^1[3-9]\d{9}$/.test(phone)) return json(res, 400, { error: '手机号格式不正确' });
+  if (!email && !phone) return json(res, 400, { error: '请至少提供邮箱或手机号之一' });
+
+  if (db.prepare('SELECT id FROM users WHERE username=?').get(username)) return json(res, 409, { error: '用户名已被占用' });
+  if (email && db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res, 409, { error: '邮箱已被注册' });
+  if (phone && db.prepare('SELECT id FROM users WHERE phone=?').get(phone)) return json(res, 409, { error: '手机号已被注册' });
+
+  let phoneVerified = 0;
+  if (phone && code) {
+    const row = db.prepare('SELECT * FROM sms_codes WHERE phone=? AND purpose=? ORDER BY created_at DESC LIMIT 1').get(phone, 'register');
+    if (!row || row.expires_at < Date.now() || row.code !== code) return json(res, 400, { error: '手机验证码错误或未获取' });
+    phoneVerified = 1;
+    db.prepare('DELETE FROM sms_codes WHERE phone=? AND purpose=?').run(phone, 'register');
+  }
+
+  let hash;
+  try { hash = await hashPassword(password); } catch (e) { return json(res, 500, { error: '密码处理失败' }); }
+
+  const info = db.prepare(
+    'INSERT INTO users (username,email,phone,password_hash,display_name,phone_verified,created_at) VALUES (?,?,?,?,?,?,?)'
+  ).run(username, email || null, phone || null, hash, username, phoneVerified, Date.now());
+
+  await createSessionFor(res, req, info.lastInsertRowid);
+  const user = db.prepare('SELECT id,username,email,phone,display_name,phone_verified,created_at FROM users WHERE id=?').get(info.lastInsertRowid);
+  return json(res, 200, { ok: true, user: publicUser(user) });
+}
+
+async function handleLogin(req, res) {
+  const b = await readJson(req);
+  const identifier = String(b.identifier || b.username || '').trim();
+  const password = String(b.password || '');
+  if (!identifier || !password) return json(res, 400, { error: '请输入账号和密码' });
+
+  const user = db.prepare('SELECT * FROM users WHERE username=? OR email=? OR phone=?').get(identifier, identifier, identifier);
+  if (!user) return json(res, 401, { error: '账号不存在' });
+  const ok = await verifyPassword(password, user.password_hash);
+  if (!ok) return json(res, 401, { error: '密码错误' });
+
+  await createSessionFor(res, req, user.id);
+  return json(res, 200, { ok: true, user: publicUser(user) });
+}
+
+async function handleLoginCode(req, res) {
+  const b = await readJson(req);
+  const phone = String(b.phone || '').trim();
+  const code = String(b.code || '').trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) return json(res, 400, { error: '手机号格式不正确' });
+
+  const row = db.prepare('SELECT * FROM sms_codes WHERE phone=? AND purpose=? ORDER BY created_at DESC LIMIT 1').get(phone, 'login');
+  if (!row || row.expires_at < Date.now() || row.code !== code) return json(res, 400, { error: '验证码错误或未获取' });
+
+  const user = db.prepare('SELECT * FROM users WHERE phone=?').get(phone);
+  if (!user) return json(res, 401, { error: '该手机号尚未注册' });
+
+  db.prepare('DELETE FROM sms_codes WHERE phone=? AND purpose=?').run(phone, 'login');
+  db.prepare('UPDATE users SET phone_verified=1 WHERE id=?').run(user.id);
+  await createSessionFor(res, req, user.id);
+  return json(res, 200, { ok: true, user: publicUser(user) });
+}
+
+async function handleSendCode(req, res) {
+  const b = await readJson(req);
+  const phone = String(b.phone || '').trim();
+  const purpose = String(b.purpose || 'register');
+  if (!/^1[3-9]\d{9}$/.test(phone)) return json(res, 400, { error: '手机号格式不正确' });
+  if (!['register', 'login'].includes(purpose)) return json(res, 400, { error: '未知用途' });
+
+  const last = db.prepare('SELECT * FROM sms_codes WHERE phone=? AND purpose=? ORDER BY created_at DESC LIMIT 1').get(phone, purpose);
+  if (last && Date.now() - last.created_at < 60000) return json(res, 429, { error: '发送过于频繁，请 60 秒后再试' });
+
+  const code = genCode();
+  const now = Date.now();
+  db.prepare('INSERT INTO sms_codes (phone,code,purpose,expires_at,created_at) VALUES (?,?,?,?,?)')
+    .run(phone, code, purpose, now + CODE_TTL, now);
+
+  const sent = await sms.sendSmsCode(phone, code, purpose);
+  const devCode = process.env.NODE_ENV === 'production' ? undefined : code;
+  return json(res, 200, {
+    ok: true,
+    devCode,
+    sent: !!sent,
+    message: sent ? '验证码已发送' : '开发态：验证码已打印到服务器控制台',
+  });
+}
+
+async function handleVerifyCode(req, res) {
+  const b = await readJson(req);
+  const phone = String(b.phone || '').trim();
+  const code = String(b.code || '').trim();
+  const purpose = String(b.purpose || 'register');
+  const row = db.prepare('SELECT * FROM sms_codes WHERE phone=? AND purpose=? ORDER BY created_at DESC LIMIT 1').get(phone, purpose);
+  if (!row || row.expires_at < Date.now()) return json(res, 400, { error: '验证码已过期，请重新获取' });
+  if (row.code !== code) return json(res, 400, { error: '验证码错误' });
+  return json(res, 200, { ok: true });
+}
+
+async function handleLogout(req, res) {
+  const token = parseCookies(req).tb_session;
+  if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+  clearSessionCookie(res, cookieSecure(req));
+  return json(res, 200, { ok: true });
+}
+
+async function handleMe(req, res) {
+  const user = await getCurrentUser(req);
+  return json(res, 200, { user: user ? publicUser(user) : null });
 }
 
 // ---------- Static serving ----------
@@ -263,6 +514,15 @@ const server = http.createServer((req, res) => {
     req2.on('timeout', () => { req2.destroy(); json(res, 200, { ok: false }); });
     return;
   }
+
+  // ---------- Auth ----------
+  if (pathname === '/api/auth/register' && req.method === 'POST') return handleRegister(req, res);
+  if (pathname === '/api/auth/login' && req.method === 'POST') return handleLogin(req, res);
+  if (pathname === '/api/auth/login-code' && req.method === 'POST') return handleLoginCode(req, res);
+  if (pathname === '/api/auth/send-code' && req.method === 'POST') return handleSendCode(req, res);
+  if (pathname === '/api/auth/verify-code' && req.method === 'POST') return handleVerifyCode(req, res);
+  if (pathname === '/api/auth/logout' && req.method === 'POST') return handleLogout(req, res);
+  if (pathname === '/api/auth/me' && req.method === 'GET') return handleMe(req, res);
 
   if (pathname.startsWith('/api/')) return json(res, 404, { error: 'not found' });
   return serveStatic(req, res);

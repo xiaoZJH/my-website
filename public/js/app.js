@@ -662,6 +662,145 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
+  /* ---------- Auth（登录 / 注册） ---------- */
+  const authModal = document.getElementById('authModal');
+  const authArea = document.getElementById('authArea');
+  const authForm = document.getElementById('authForm');
+  const authError = document.getElementById('authError');
+  const authHint = document.getElementById('authHint');
+  const authSubmit = document.getElementById('authSubmit');
+  let authMode = 'login'; // login | login-code | register
+  let currentUser = null;
+
+  function aesc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  const AUTH_FIELDS = {
+    'login': ['identifier', 'password'],
+    'login-code': ['phone', 'code'],
+    'register': ['username', 'email', 'phone', 'code', 'password'],
+  };
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('is-active', t.dataset.authTab === (mode === 'login-code' ? 'login' : mode)));
+    authForm.querySelectorAll('.auth-field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
+    const title = document.getElementById('authTitle');
+    if (mode === 'login') {
+      title.textContent = '登录'; authSubmit.textContent = '登录'; authHint.textContent = '';
+    } else if (mode === 'login-code') {
+      title.textContent = '验证码登录'; authSubmit.textContent = '验证码登录'; authHint.textContent = '输入手机号与收到的验证码即可登录';
+    } else {
+      title.textContent = '创建账户'; authSubmit.textContent = '注册'; authHint.textContent = '手机号可留空；填写后点"获取验证码"可绑定并验证手机号';
+    }
+    authError.hidden = true;
+  }
+
+  function openAuth(mode) {
+    setAuthMode(mode || 'login');
+    authModal.classList.add('is-open');
+    authModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    const first = authForm.querySelector('.auth-field:not([hidden]) input');
+    if (first) setTimeout(() => first.focus(), 60);
+  }
+  function closeAuth() {
+    if (!authModal.classList.contains('is-open')) return;
+    authModal.classList.remove('is-open');
+    authModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    try { authForm.reset(); } catch (_) {}
+    authError.hidden = true;
+  }
+  function showAuthError(msg) { authError.textContent = msg; authError.hidden = false; }
+
+  function renderAuthArea() {
+    if (!authArea) return;
+    if (currentUser) {
+      const initial = aesc((currentUser.display_name || currentUser.username || 'U').slice(0, 1).toUpperCase());
+      const name = aesc(currentUser.display_name || currentUser.username);
+      authArea.innerHTML =
+        '<div class="user-chip" id="userChip">' +
+          '<span class="user-chip__avatar">' + initial + '</span>' +
+          '<span class="user-chip__name">' + name + '</span>' +
+          '<button class="user-chip__logout" id="authLogout" type="button" title="退出登录">退出</button>' +
+        '</div>';
+    } else {
+      authArea.innerHTML = '<button class="auth-btn" id="authLoginBtn" type="button">登录</button>';
+    }
+  }
+
+  async function refreshAuth() {
+    try {
+      const r = await fetch('/api/auth/me');
+      const j = await r.json();
+      currentUser = j.user || null;
+    } catch (_) { currentUser = null; }
+    renderAuthArea();
+  }
+
+  async function api(path, body) {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    let j = {};
+    try { j = await r.json(); } catch (_) {}
+    return { ok: r.ok, status: r.status, data: j };
+  }
+
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    authError.hidden = true;
+    const fd = new FormData(authForm);
+    const v = (n) => (fd.get(n) || '').toString().trim();
+    let res;
+    if (authMode === 'login') {
+      res = await api('/api/auth/login', { identifier: v('identifier'), password: v('password') });
+    } else if (authMode === 'login-code') {
+      res = await api('/api/auth/login-code', { phone: v('phone'), code: v('code') });
+    } else {
+      res = await api('/api/auth/register', { username: v('username'), email: v('email'), phone: v('phone'), code: v('code'), password: v('password') });
+    }
+    if (res.ok && res.data.user) {
+      currentUser = res.data.user;
+      renderAuthArea();
+      closeAuth();
+    } else {
+      showAuthError((res.data && res.data.error) || '操作失败，请重试');
+    }
+  });
+
+  const authSendBtn = document.querySelector('[data-auth-send]');
+  if (authSendBtn) authSendBtn.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const phone = (new FormData(authForm).get('phone') || '').toString().trim();
+    if (!/^1[3-9]\d{9}$/.test(phone)) { showAuthError('请先填写正确的 11 位手机号'); return; }
+    const purpose = authMode === 'login-code' ? 'login' : 'register';
+    btn.disabled = true;
+    const res = await api('/api/auth/send-code', { phone, purpose });
+    btn.disabled = false;
+    if (res.ok) {
+      const dev = res.data.devCode ? ('（开发态验证码：' + res.data.devCode + '）') : '';
+      authHint.textContent = '验证码已发送，请查收' + dev;
+      authError.hidden = true;
+    } else {
+      showAuthError((res.data && res.data.error) || '发送失败');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#authLoginBtn')) { openAuth('login'); return; }
+    if (e.target.closest('#authLogout')) {
+      api('/api/auth/logout').then(() => { currentUser = null; renderAuthArea(); });
+      return;
+    }
+    const tab = e.target.closest('[data-auth-tab]');
+    if (tab) { setAuthMode(tab.dataset.authTab); return; }
+    const modeLink = e.target.closest('[data-auth-mode]');
+    if (modeLink) { openAuth(modeLink.dataset.authMode); return; }
+    const close = e.target.closest('[data-auth-close]');
+    if (close) { closeAuth(); return; }
+  });
+
   /* ---------- Router ---------- */
   async function route() {
     closeDrawer();
@@ -747,7 +886,7 @@ C:\\path\\to\\python -m venv .venv
     const link = e.target.closest('[data-link]');
     if (link) { /* 交由浏览器处理 hash 跳转 */ }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeAuth(); } });
 
   /* ---------- Reveal ---------- */
   function bindReveal() {
@@ -853,6 +992,9 @@ C:\\path\\to\\python -m venv .venv
 
   document.getElementById('footerYear').textContent = new Date().getFullYear();
   window.addEventListener('hashchange', route);
+
+  // 启动时拉取登录态，渲染导航区的登录按钮 / 已登录用户
+  refreshAuth();
 
   // Landing 入口：首次直接访问（无 hash）时显示粒子波浪欢迎页，点击进入后才渲染主站
   if (!landing || (location.hash.replace(/^#/, ''))) {
