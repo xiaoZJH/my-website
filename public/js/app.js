@@ -705,6 +705,53 @@ C:\\path\\to\\python -m venv .venv
   let onboardAvatar = '0';
   let onboardCustomDataUrl = '';
 
+  /* ---------- 角色眼睛跟随鼠标 + 随机眨眼 ---------- */
+  (function initObEyes() {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const stage = document.querySelector('.onboard-modal__stage');
+    if (!stage) return;
+
+    function movePupil(eye, mx, my) {
+      const pupil = eye.querySelector('.ob-pupil');
+      if (!pupil) return;
+      const rect = eye.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = mx - cx;
+      const dy = my - cy;
+      const angle = Math.atan2(dy, dx);
+      const maxR = Math.max(2, (eye.offsetWidth - pupil.offsetWidth) / 2 - 1);
+      const r = Math.min(Math.hypot(dx, dy) / 18, 1) * maxR;
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      pupil.style.transform = `translate(calc(-50% + ${x.toFixed(2)}px), calc(-50% + ${y.toFixed(2)}px))`;
+    }
+
+    function updateEyes(mx, my) {
+      document.querySelectorAll('.ob-eye').forEach(eye => movePupil(eye, mx, my));
+    }
+
+    stage.addEventListener('mousemove', (e) => updateEyes(e.clientX, e.clientY));
+    document.addEventListener('mousemove', (e) => {
+      if (onboardModal && onboardModal.classList.contains('is-open')) updateEyes(e.clientX, e.clientY);
+    });
+
+    if (reduce) return;
+
+    // 随机眨眼：每次挑 1~2 只眼睛
+    function blink() {
+      const eyes = Array.from(document.querySelectorAll('.ob-eye'));
+      if (!eyes.length) return;
+      const count = 1 + Math.floor(Math.random() * 2);
+      eyes.sort(() => Math.random() - 0.5).slice(0, count).forEach(eye => {
+        eye.classList.add('is-blinking');
+        setTimeout(() => eye.classList.remove('is-blinking'), 200);
+      });
+      setTimeout(blink, 1200 + Math.random() * 2500);
+    }
+    setTimeout(blink, 900);
+  })();
+
   function openOnboard() {
     if (!onboardModal) return;
     onboardModal.classList.add('is-open');

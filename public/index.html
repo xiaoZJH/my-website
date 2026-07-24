@@ -200,15 +200,39 @@
   <div class="onboard-modal" id="onboardModal" aria-hidden="true">
     <div class="onboard-modal__scrim" data-onboard-close></div>
     <div class="onboard-modal__stage" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
-      <button class="onboard-modal__close" type="button" data-onboard-close aria-label="关闭">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
+      <div class="onboard-modal__card">
+        <button class="onboard-modal__close" type="button" data-onboard-close aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
 
-      <div class="onboard-characters" aria-hidden="true">
-        <div class="ob-char ob-char--orange"></div>
-        <div class="ob-char ob-char--purple"></div>
-        <div class="ob-char ob-char--black"></div>
-        <div class="ob-char ob-char--yellow"></div>
+        <div class="onboard-characters" aria-hidden="true">
+          <div class="ob-char ob-char--orange">
+          <div class="ob-face">
+            <div class="ob-eye ob-eye--left"><div class="ob-pupil"></div></div>
+            <div class="ob-eye ob-eye--right"><div class="ob-pupil"></div></div>
+            <div class="ob-mouth"></div>
+          </div>
+        </div>
+        <div class="ob-char ob-char--purple">
+          <div class="ob-face">
+            <div class="ob-eye ob-eye--left"><div class="ob-pupil"></div></div>
+            <div class="ob-eye ob-eye--right"><div class="ob-pupil"></div></div>
+            <div class="ob-mouth"></div>
+          </div>
+        </div>
+        <div class="ob-char ob-char--black">
+          <div class="ob-face">
+            <div class="ob-eye ob-eye--left"><div class="ob-pupil"></div></div>
+            <div class="ob-eye ob-eye--right"><div class="ob-pupil"></div></div>
+            <div class="ob-mouth"></div>
+          </div>
+        </div>
+        <div class="ob-char ob-char--yellow">
+          <div class="ob-face ob-face--side">
+            <div class="ob-eye ob-eye--single"><div class="ob-pupil"></div></div>
+            <div class="ob-mouth"></div>
+          </div>
+        </div>
       </div>
 
       <div class="onboard-card">
@@ -255,6 +279,7 @@
       </div>
     </div>
   </div>
+</div>
 
   <script src="/js/tools.js"></script>
   <script src="/js/app.js"></script>
