@@ -15,6 +15,7 @@
   const drawerIcon = document.getElementById('drawerIcon');
   const landing = document.getElementById('landing');
   const landingCanvas = document.getElementById('landingCanvas');
+  let landingSeaStop = null;
   const enterBtn = document.getElementById('enterBtn');
 
   /* ---------- 个人信息（请改成你自己的） ---------- */
@@ -42,21 +43,33 @@
     ],
   };
 
-  /* ---------- Landing / 写实海洋入口 ---------- */
+  /* ---------- Landing / 登录 Gate ---------- */
   function initLanding() {
     if (!landingCanvas || !landing) return;
-    const stopSea = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
-    const enter = () => {
-      if (landing.classList.contains('is-leaving')) return;
-      landing.classList.add('is-leaving');
-      landing.setAttribute('aria-hidden', 'true');
-      try { if (stopSea && typeof stopSea.stop === 'function') stopSea.stop(); } catch (_) {}
-      // 直接进入主页（设置 hash，触发 hashchange → route → 渲染含个人信息的首页）
-      location.hash = '#/';
-    };
-    enterBtn?.addEventListener('click', enter);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !landing.classList.contains('is-leaving')) enter(); });
-    // 进入只能走「进入站点」按钮或回车键；点击夜空/流星只触发烟花，不会进入主页
+    landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
+    setAuthMode('login');
+  }
+
+  function enterSite() {
+    if (!landing || landing.classList.contains('is-leaving')) return;
+    landing.classList.add('is-leaving');
+    landing.setAttribute('aria-hidden', 'true');
+    try { if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop(); } catch (_) {}
+    location.hash = '#/';
+    route().then(trackVisit);
+  }
+
+  function showLanding() {
+    if (!landing) return;
+    landing.classList.remove('is-leaving');
+    landing.setAttribute('aria-hidden', 'false');
+    view.innerHTML = '';
+    setActive('/');
+    setAuthMode('login');
+    if (landingCanvas) {
+      try { if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop(); } catch (_) {}
+      landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
+    }
   }
 
     /* ---------- 插画风格动态海洋（Landing / 主页共用） ---------- */
@@ -662,8 +675,7 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
-  /* ---------- Auth（登录 / 注册） ---------- */
-  const authModal = document.getElementById('authModal');
+  /* ---------- Auth（登录 / 注册 Gate） ---------- */
   const authArea = document.getElementById('authArea');
   const authForm = document.getElementById('authForm');
   const authError = document.getElementById('authError');
@@ -683,37 +695,33 @@ C:\\path\\to\\python -m venv .venv
   };
 
   function setAuthMode(mode) {
+    if (!authForm) return;
     authMode = mode;
-    document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('is-active', t.dataset.authTab === (mode === 'login-code' ? 'login' : mode)));
-    authForm.querySelectorAll('.auth-field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
+    document.querySelectorAll('.gate__tab').forEach((t) => {
+      const isActive = t.dataset.authTab === (mode === 'login-code' ? 'login' : mode);
+      t.classList.toggle('is-active', isActive);
+      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    authForm.querySelectorAll('.gate__field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
     const title = document.getElementById('authTitle');
-    if (mode === 'login') {
-      title.textContent = '登录'; authSubmit.textContent = '登录'; authHint.textContent = '';
-    } else if (mode === 'login-code') {
-      title.textContent = '验证码登录'; authSubmit.textContent = '验证码登录'; authHint.textContent = '输入手机号与收到的验证码即可登录';
-    } else {
-      title.textContent = '创建账户'; authSubmit.textContent = '注册'; authHint.textContent = '手机号可留空；填写后点"获取验证码"可绑定并验证手机号';
+    if (title) {
+      if (mode === 'login') title.textContent = '登录';
+      else if (mode === 'login-code') title.textContent = '验证码登录';
+      else title.textContent = '创建账户';
     }
+    if (authSubmit) authSubmit.textContent = mode === 'register' ? '注册' : (mode === 'login-code' ? '验证码登录' : '登录');
+    if (authHint) authHint.textContent = mode === 'login-code' ? '输入手机号与收到的验证码即可登录' : (mode === 'register' ? '手机号可留空；填写后点"获取验证码"可绑定并验证手机号' : '');
     authError.hidden = true;
   }
 
-  function openAuth(mode) {
-    setAuthMode(mode || 'login');
-    authModal.classList.add('is-open');
-    authModal.setAttribute('aria-hidden', 'false');
-    document.body.style.overflow = 'hidden';
-    const first = authForm.querySelector('.auth-field:not([hidden]) input');
-    if (first) setTimeout(() => first.focus(), 60);
+  function showAuthError(msg) {
+    authError.textContent = msg;
+    authError.hidden = false;
+    const gate = document.getElementById('gate');
+    if (gate && !gate.classList.contains('is-success')) {
+      gate.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-in-out' });
+    }
   }
-  function closeAuth() {
-    if (!authModal.classList.contains('is-open')) return;
-    authModal.classList.remove('is-open');
-    authModal.setAttribute('aria-hidden', 'true');
-    document.body.style.overflow = '';
-    try { authForm.reset(); } catch (_) {}
-    authError.hidden = true;
-  }
-  function showAuthError(msg) { authError.textContent = msg; authError.hidden = false; }
 
   function renderAuthArea() {
     if (!authArea) return;
@@ -727,7 +735,7 @@ C:\\path\\to\\python -m venv .venv
           '<button class="user-chip__logout" id="authLogout" type="button" title="退出登录">退出</button>' +
         '</div>';
     } else {
-      authArea.innerHTML = '<button class="auth-btn" id="authLoginBtn" type="button">登录</button>';
+      authArea.innerHTML = '';
     }
   }
 
@@ -747,7 +755,7 @@ C:\\path\\to\\python -m venv .venv
     return { ok: r.ok, status: r.status, data: j };
   }
 
-  authForm.addEventListener('submit', async (e) => {
+  authForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     authError.hidden = true;
     const fd = new FormData(authForm);
@@ -763,7 +771,12 @@ C:\\path\\to\\python -m venv .venv
     if (res.ok && res.data.user) {
       currentUser = res.data.user;
       renderAuthArea();
-      closeAuth();
+      const gate = document.getElementById('gate');
+      if (gate) {
+        gate.classList.add('is-success');
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      enterSite();
     } else {
       showAuthError((res.data && res.data.error) || '操作失败，请重试');
     }
@@ -788,17 +801,19 @@ C:\\path\\to\\python -m venv .venv
   });
 
   document.addEventListener('click', (e) => {
-    if (e.target.closest('#authLoginBtn')) { openAuth('login'); return; }
     if (e.target.closest('#authLogout')) {
-      api('/api/auth/logout').then(() => { currentUser = null; renderAuthArea(); });
+      api('/api/auth/logout').then(() => {
+        currentUser = null;
+        renderAuthArea();
+        history.replaceState(null, '', location.pathname + location.search);
+        showLanding();
+      });
       return;
     }
     const tab = e.target.closest('[data-auth-tab]');
     if (tab) { setAuthMode(tab.dataset.authTab); return; }
     const modeLink = e.target.closest('[data-auth-mode]');
-    if (modeLink) { openAuth(modeLink.dataset.authMode); return; }
-    const close = e.target.closest('[data-auth-close]');
-    if (close) { closeAuth(); return; }
+    if (modeLink) { setAuthMode(modeLink.dataset.authMode); return; }
   });
 
   /* ---------- Router ---------- */
@@ -994,15 +1009,21 @@ C:\\path\\to\\python -m venv .venv
   window.addEventListener('hashchange', route);
 
   // 启动时拉取登录态，渲染导航区的登录按钮 / 已登录用户
-  refreshAuth();
-
-  // Landing 入口：首次直接访问（无 hash）时显示粒子波浪欢迎页，点击进入后才渲染主站
-  if (!landing || (location.hash.replace(/^#/, ''))) {
-    if (landing) { landing.classList.add('is-leaving'); landing.setAttribute('aria-hidden', 'true'); }
-    route().then(trackVisit);
-  } else {
-    initLanding();
+  async function boot() {
+    await refreshAuth();
+    if (currentUser) {
+      // 已登录：直接进入主站
+      if (landing) { landing.classList.add('is-leaving'); landing.setAttribute('aria-hidden', 'true'); }
+      await route();
+      trackVisit();
+    } else {
+      // 未登录：强制显示登录 gate，忽略任何 hash
+      if (location.hash) { history.replaceState(null, '', location.pathname + location.search); }
+      initLanding();
+    }
   }
+
+  boot();
 
   setInterval(() => { if ((location.hash.replace(/^#/, '') || '/') === '/') trackVisit(); }, 60000);
 })();
