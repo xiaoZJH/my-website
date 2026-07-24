@@ -118,28 +118,33 @@ ufw --force enable
 
 log "配置 pm2 并启动应用..."
 cd "${APP_DIR}"
+# 优先使用仓库内已提交的 ecosystem.config.js；
+# 缺失时才按默认生成（已显式声明 exec_mode: 'fork'，避免被误解为 cluster）
+if [ ! -f ecosystem.config.js ]; then
 cat > ecosystem.config.js <<EOF
 module.exports = {
   apps: [{
     name: 'toolbox',
     script: './server/server.js',
-    cwd: '${APP_DIR}',
     args: '--experimental-sqlite',
+    exec_mode: 'fork',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    restart_delay: 3000,
     env: {
       NODE_ENV: 'production',
       PORT: ${PORT},
       WM_PORT: ${WM_PORT},
       WM_BASE_PATH: '${WM_BASE_PATH}'
-    },
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '1G',
-    restart_delay: 3000
+    }
   }]
 };
 EOF
+fi
 
+# 关键：清理遗留进程，避免端口被旧实例占用导致 EADDRINUSE
 pm2 delete toolbox 2>/dev/null || true
 pm2 start ecosystem.config.js
 pm2 save
@@ -156,12 +161,13 @@ echo ""
 echo "  网站首页：http://${PUBLIC_IP}"
 echo "  去水印工具：http://${PUBLIC_IP}${WM_BASE_PATH}/"
 echo ""
-echo "  常用管理命令："
-echo "    pm2 status            查看运行状态"
-echo "    pm2 logs toolbox      查看应用日志"
-echo "    pm2 restart toolbox   重启应用"
-echo "    nginx -t              检查 Nginx 配置"
-echo "    systemctl restart nginx  重启 Nginx"
+echo "  常用管理命令（注意：pm2 守护进程以 root 运行，后续管理务必加 sudo）："
+echo "    sudo pm2 status            查看运行状态"
+echo "    sudo pm2 logs toolbox      查看应用日志"
+echo "    sudo pm2 restart toolbox   重启应用"
+echo "    sudo pm2 save              保存当前进程列表（改配置后必跑）"
+echo "    nginx -t              检查 Nginx 配置（需 sudo）"
+echo "    sudo systemctl restart nginx  重启 Nginx"
 echo ""
 echo "  数据文件位置：${APP_DIR}/data/toolbox.db"
 echo "  后续可安装宝塔面板获得图形化管理界面。"
