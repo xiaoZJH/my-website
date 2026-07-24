@@ -23,11 +23,10 @@ log() { echo -e "${GREEN}[setup]${NC} $1"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $1"; }
 err() { echo -e "${RED}[error]${NC} $1"; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || err "请使用 root 用户运行本脚本（腾讯云控制台默认就是 root）"
+[ "$(id -u)" -eq 0 ] || err "请使用 sudo 运行本脚本：sudo bash setup.sh"
 
 log "更新系统软件包..."
 apt-get update -y
-apt-get upgrade -y
 apt-get install -y curl wget git ufw build-essential python3 python3-venv python3-pip python3-dev ffmpeg nginx
 
 log "安装 Node.js ${NODE_VERSION}..."
@@ -40,14 +39,22 @@ log "Node.js 版本: $(node -v), npm 版本: $(npm -v)"
 log "安装 pm2 进程守护..."
 npm install -g pm2
 
-log "拉取项目代码..."
-if [ -d "${APP_DIR}/.git" ]; then
-  cd "${APP_DIR}"
-  git reset --hard
-  git pull origin main
+log "准备项目代码..."
+# 如果脚本本身就在仓库目录内运行（先 git clone 再 sudo bash setup.sh），
+# 则直接使用当前目录，避免重复 clone 浪费时间
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/server/server.js" ]; then
+  APP_DIR="${SCRIPT_DIR}"
+  log "检测到脚本位于仓库目录内，直接使用：${APP_DIR}"
 else
-  [ -d "${APP_DIR}" ] && rm -rf "${APP_DIR}"
-  git clone "${REPO}" "${APP_DIR}"
+  if [ -d "${APP_DIR}/.git" ]; then
+    cd "${APP_DIR}"
+    git reset --hard
+    git pull origin main
+  else
+    [ -d "${APP_DIR}" ] && rm -rf "${APP_DIR}"
+    git clone "${REPO}" "${APP_DIR}"
+  fi
 fi
 
 log "配置 Python 去水印环境（需要几分钟，请等待 OpenCV 安装）..."
@@ -156,4 +163,6 @@ echo "    systemctl restart nginx  重启 Nginx"
 echo ""
 echo "  数据文件位置：${APP_DIR}/data/toolbox.db"
 echo "  后续可安装宝塔面板获得图形化管理界面。"
+echo ""
+echo -e "${YELLOW}重要：若外网仍无法访问，请到 腾讯云控制台 → 轻量应用服务器 → 防火墙，放行 80 与 443 端口${NC}"
 echo ""
