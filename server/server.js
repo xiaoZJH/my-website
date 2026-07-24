@@ -71,6 +71,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sms_phone ON sms_codes(phone, purpose);
 `);
 
+// 兼容旧库：补充 guest 与头像字段（忽略已存在报错）
+try { db.exec('ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN avatar TEXT'); } catch (_) {}
+
 function seedIfEmpty() {
   const count = db.prepare('SELECT COUNT(*) AS c FROM posts').get().c;
   if (count > 0) return;
@@ -243,6 +247,7 @@ function publicUser(u) {
   if (!u) return null;
   const r = stripHash(u);
   r.phone_verified = !!r.phone_verified;
+  r.is_guest = !!r.is_guest;
   return r;
 }
 
@@ -256,7 +261,7 @@ async function getCurrentUser(req) {
     return null;
   }
   const user = db.prepare(
-    'SELECT id,username,email,phone,display_name,phone_verified,created_at FROM users WHERE id=?'
+    'SELECT id,username,email,phone,display_name,phone_verified,is_guest,avatar,created_at FROM users WHERE id=?'
   ).get(sess.user_id);
   return user || null;
 }
@@ -306,7 +311,7 @@ async function handleRegister(req, res) {
   ).run(username, email || null, phone || null, hash, username, phoneVerified, Date.now());
 
   await createSessionFor(res, req, info.lastInsertRowid);
-  const user = db.prepare('SELECT id,username,email,phone,display_name,phone_verified,created_at FROM users WHERE id=?').get(info.lastInsertRowid);
+  const user = db.prepare('SELECT id,username,email,phone,display_name,phone_verified,is_guest,avatar,created_at FROM users WHERE id=?').get(info.lastInsertRowid);
   return json(res, 200, { ok: true, user: publicUser(user) });
 }
 
@@ -384,6 +389,28 @@ async function handleLogout(req, res) {
   if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
   clearSessionCookie(res, cookieSecure(req));
   return json(res, 200, { ok: true });
+}
+
+async function handleGuest(req, res) {
+  const b = await readJson(req);
+  const displayName = String(b.display_name || '').trim();
+  const avatar = String(b.avatar || '0').trim();
+
+  if (!displayName || displayName.length < 2 || displayName.length > 20) {
+    return json(res, 400, { error: '昵称需为 2-20 个字符' });
+  }
+  if (!/^data:image\/(png|jpeg|webp);base64,/.test(avatar) && !/^[0-3]$/.test(avatar)) {
+    return json(res, 400, { error: '头像格式不正确' });
+  }
+
+  const username = 'guest_' + crypto.randomBytes(6).toString('hex');
+  const info = db.prepare(
+    'INSERT INTO users (username,email,phone,password_hash,display_name,phone_verified,is_guest,avatar,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(username, null, null, null, displayName, 0, 1, avatar, Date.now());
+
+  await createSessionFor(res, req, info.lastInsertRowid);
+  const user = db.prepare('SELECT id,username,email,phone,display_name,phone_verified,is_guest,avatar,created_at FROM users WHERE id=?').get(info.lastInsertRowid);
+  return json(res, 200, { ok: true, user: publicUser(user) });
 }
 
 async function handleMe(req, res) {
@@ -521,6 +548,7 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/auth/login-code' && req.method === 'POST') return handleLoginCode(req, res);
   if (pathname === '/api/auth/send-code' && req.method === 'POST') return handleSendCode(req, res);
   if (pathname === '/api/auth/verify-code' && req.method === 'POST') return handleVerifyCode(req, res);
+  if (pathname === '/api/auth/guest' && req.method === 'POST') return handleGuest(req, res);
   if (pathname === '/api/auth/logout' && req.method === 'POST') return handleLogout(req, res);
   if (pathname === '/api/auth/me' && req.method === 'GET') return handleMe(req, res);
 

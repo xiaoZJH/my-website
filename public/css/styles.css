@@ -557,6 +557,169 @@ img { max-width: 100%; display: block; }
   .auth-card__code-btn { width: 100%; padding: 10px 14px; }
 }
 
+/* ---------- Onboarding Modal：卡通角色 + 身份卡片 ---------- */
+.onboard-modal { position: fixed; inset: 0; z-index: 210; display: none; }
+.onboard-modal.is-open { display: block; }
+.onboard-modal__scrim {
+  position: absolute; inset: 0;
+  background: rgba(12, 14, 28, .88);
+  backdrop-filter: blur(14px);
+  animation: obScrimIn .35s var(--ease) forwards;
+}
+@keyframes obScrimIn { from { opacity: 0; } to { opacity: 1; } }
+.onboard-modal__stage {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 5vw;
+  padding: 24px;
+  animation: obStageIn .55s var(--ease) forwards;
+}
+@keyframes obStageIn {
+  from { opacity: 0; transform: scale(.96) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.onboard-modal__close {
+  position: absolute; top: 18px; right: 18px; z-index: 10;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; color: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  transition: color .2s, transform .2s, background .2s;
+}
+.onboard-modal__close:hover { color: #fff; transform: rotate(90deg); background: rgba(255,255,255,.14); }
+
+/* 左侧角色 */
+.onboard-characters {
+  position: relative; width: min(34vw, 320px); height: min(42vw, 380px); flex-shrink: 0;
+  pointer-events: none;
+}
+.ob-char {
+  position: absolute; bottom: 0; transform-origin: 50% 100%;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 18px;
+  box-shadow: 0 14px 40px -10px rgba(0,0,0,.35);
+}
+.ob-char::before, .ob-char::after { content: ''; position: absolute; border-radius: 50%; background: #1a1a2e; }
+.ob-char::before { width: 10px; height: 10px; top: 32px; left: 50%; transform: translateX(-18px); }
+.ob-char::after { width: 10px; height: 10px; top: 32px; left: 50%; transform: translateX(8px); }
+.ob-char--orange {
+  left: 0; bottom: -10px; width: 140px; height: 90px;
+  background: #f4a261; border-radius: 70px 70px 30px 30px;
+  animation: obBob 3.2s ease-in-out infinite, obSway 4s ease-in-out infinite;
+}
+.ob-char--orange::before { top: 26px; transform: translateX(-22px); }
+.ob-char--orange::after { top: 26px; transform: translateX(12px); }
+.ob-char--purple {
+  left: 90px; bottom: 0; width: 82px; height: 230px;
+  background: #7c3aed; border-radius: 12px 12px 16px 16px;
+  animation: obBob 3s ease-in-out .2s infinite;
+}
+.ob-char--black {
+  left: 160px; bottom: 0; width: 70px; height: 170px;
+  background: #1f2937; border-radius: 12px 12px 16px 16px;
+  animation: obBob 3.4s ease-in-out .4s infinite;
+}
+.ob-char--black::before, .ob-char--black::after { background: #fff; }
+.ob-char--yellow {
+  left: 220px; bottom: 0; width: 78px; height: 195px;
+  background: #facc15; border-radius: 38px 38px 16px 16px;
+  animation: obBob 2.8s ease-in-out .1s infinite;
+}
+/* 嘴巴 */
+.ob-char--orange .ob-face__mouth,
+.ob-char--purple .ob-face__mouth,
+.ob-char--black .ob-face__mouth,
+.ob-char--yellow .ob-face__mouth {
+  position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 8px; border-bottom: 3px solid #1a1a2e; border-radius: 0 0 18px 18px;
+}
+.ob-char--black .ob-face__mouth { border-color: #fff; }
+.ob-char--yellow .ob-face__mouth { width: 24px; border-radius: 0; border-bottom: 3px solid #1a1a2e; }
+.ob-face__mouth { display: block; }
+@keyframes obBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes obSway { 0%,100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
+
+/* 右侧卡片 */
+.onboard-card {
+  position: relative; width: min(440px, calc(100vw - 32px));
+  background: #fff; border-radius: 28px;
+  padding: 38px 34px 30px; color: #111827;
+  box-shadow: 0 40px 100px -30px rgba(0,0,0,.45);
+  animation: obCardIn .6s var(--ease) .1s backwards;
+}
+@keyframes obCardIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.onboard-card__sparkle {
+  position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+  font-size: 1.6rem; color: #111827; line-height: 1;
+  animation: obSparkle 2.5s ease-in-out infinite;
+}
+@keyframes obSparkle { 0%,100% { transform: translateX(-50%) scale(1) rotate(0); } 50% { transform: translateX(-50%) scale(1.2) rotate(12deg); } }
+.onboard-card__title { font-family: var(--font-display); font-size: 1.9rem; font-weight: 800; text-align: center; margin: 26px 0 6px; letter-spacing: -.02em; }
+.onboard-card__subtitle { text-align: center; color: #6b7280; font-size: .92rem; margin: 0 0 28px; }
+
+.onboard-avatars { display: flex; justify-content: center; align-items: center; gap: 14px; margin-bottom: 26px; flex-wrap: wrap; }
+.onboard-avatar {
+  position: relative; width: 56px; height: 56px; border-radius: 50%; padding: 0;
+  border: 2px solid transparent; background: #f3f4f6; cursor: pointer;
+  display: grid; place-items: center; overflow: hidden;
+  transition: transform .25s var(--ease), border-color .25s var(--ease), box-shadow .25s var(--ease);
+}
+.onboard-avatar:hover { transform: translateY(-3px); }
+.onboard-avatar.is-active { border-color: #111827; box-shadow: 0 8px 20px -8px rgba(0,0,0,.35); transform: scale(1.08); }
+.onboard-avatar svg { width: 100%; height: 100%; display: block; }
+.onboard-avatar--upload {
+  border: 2px dashed #d1d5db; color: #9ca3af; background: #fff;
+}
+.onboard-avatar--upload:hover { border-color: #7c3aed; color: #7c3aed; }
+.onboard-avatar__plus { font-size: 1.6rem; font-weight: 300; line-height: 1; }
+.onboard-avatar__preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.onboard-avatar--upload.has-preview { border-style: solid; border-color: #111827; }
+.onboard-avatar--upload.has-preview .onboard-avatar__plus { display: none; }
+
+.onboard-form { display: flex; flex-direction: column; gap: 16px; }
+.onboard-field { display: flex; flex-direction: column; gap: 8px; }
+.onboard-field label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .85rem; font-weight: 600; color: #374151;
+}
+.onboard-field label svg { color: #6b7280; }
+.onboard-field input {
+  appearance: none; width: 100%; padding: 14px 16px; border-radius: 16px;
+  border: 1px solid #e5e7eb; background: #f9fafb; color: #111827;
+  font-family: var(--font-body); font-size: 1rem;
+  outline: none; transition: border-color .2s var(--ease), background .2s var(--ease), box-shadow .2s var(--ease);
+}
+.onboard-field input::placeholder { color: #9ca3af; }
+.onboard-field input:focus { border-color: #7c3aed; background: #fff; box-shadow: 0 0 0 4px rgba(124,58,237,.12); }
+.onboard-error { font-size: .85rem; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 9px 12px; }
+.onboard-submit {
+  appearance: none; border: none; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 15px; border-radius: 16px; margin-top: 4px;
+  background: #f3f4f6; color: #9ca3af;
+  font-family: var(--font-display); font-weight: 700; font-size: 1rem;
+  cursor: not-allowed; transition: background .25s var(--ease), color .25s var(--ease), transform .25s var(--ease), box-shadow .25s var(--ease);
+}
+.onboard-submit:not(:disabled) {
+  background: #111827; color: #fff; cursor: pointer;
+  box-shadow: 0 10px 28px -10px rgba(17,24,39,.45);
+}
+.onboard-submit:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 14px 36px -12px rgba(17,24,39,.55); }
+.onboard-submit:not(:disabled):active { transform: translateY(0); }
+.onboard-submit svg { transition: transform .25s var(--ease); }
+.onboard-submit:not(:disabled):hover svg { transform: translateX(4px); }
+.onboard-card__footer { text-align: center; color: #9ca3af; font-size: .78rem; margin-top: 22px; letter-spacing: .04em; }
+
+@media (max-width: 900px) {
+  .onboard-modal__stage { flex-direction: column; gap: 28px; padding-top: 70px; overflow-y: auto; }
+  .onboard-characters { width: min(72vw, 280px); height: min(52vw, 220px); transform: scale(.85); }
+  .onboard-card { padding: 28px 24px 24px; }
+}
+@media (max-width: 480px) {
+  .onboard-characters { transform: scale(.7); margin-bottom: -20px; }
+  .onboard-avatar { width: 48px; height: 48px; }
+  .onboard-card__title { font-size: 1.6rem; }
+}
+
 /* ---------- Personal Profile Hero ---------- */
 .profile-hero { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-7); align-items: center; padding: var(--sp-8) 0 var(--sp-6); }
 .profile-hero__visual { display: flex; justify-content: center; }

@@ -50,7 +50,7 @@
     if (!enterBtn) return;
     const onEnter = () => {
       if (landing.classList.contains('is-leaving')) return;
-      if (currentUser) enterSite(); else openAuth('login');
+      if (currentUser) enterSite(); else openOnboard();
     };
     enterBtn.addEventListener('click', onEnter);
     document.addEventListener('keydown', (e) => {
@@ -693,6 +693,59 @@ C:\\path\\to\\python -m venv .venv
   let authMode = 'login'; // login | login-code | register
   let currentUser = null;
 
+  /* ---------- Onboarding（进入网站） ---------- */
+  const onboardModal = document.getElementById('onboardModal');
+  const onboardForm = document.getElementById('onboardForm');
+  const onboardName = document.getElementById('onboardName');
+  const onboardError = document.getElementById('onboardError');
+  const onboardSubmit = document.getElementById('onboardSubmit');
+  const onboardAvatars = document.getElementById('onboardAvatars');
+  const onboardAvatarUpload = document.getElementById('onboardAvatarUpload');
+  const onboardAvatarPreview = document.getElementById('onboardAvatarPreview');
+  let onboardAvatar = '0';
+  let onboardCustomDataUrl = '';
+
+  function openOnboard() {
+    if (!onboardModal) return;
+    onboardModal.classList.add('is-open');
+    onboardModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    if (onboardName) setTimeout(() => onboardName.focus(), 80);
+  }
+  function closeOnboard() {
+    if (!onboardModal || !onboardModal.classList.contains('is-open')) return;
+    onboardModal.classList.remove('is-open');
+    onboardModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    try { onboardForm?.reset(); } catch (_) {}
+    if (onboardError) onboardError.hidden = true;
+    onboardName && (onboardName.value = '');
+    onboardAvatar = '0';
+    onboardCustomDataUrl = '';
+    onboardAvatarUpload && (onboardAvatarUpload.value = '');
+    if (onboardAvatarPreview) { onboardAvatarPreview.src = ''; onboardAvatarPreview.hidden = true; }
+    if (onboardAvatars) {
+      onboardAvatars.querySelectorAll('.onboard-avatar').forEach((el) => {
+        el.classList.toggle('is-active', el.dataset.avatar === '0');
+        el.setAttribute('aria-checked', el.dataset.avatar === '0' ? 'true' : 'false');
+      });
+      const upload = onboardAvatars.querySelector('.onboard-avatar--upload');
+      if (upload) upload.classList.remove('has-preview');
+    }
+    updateOnboardSubmit();
+  }
+  function showOnboardError(msg) {
+    if (onboardError) { onboardError.textContent = msg; onboardError.hidden = false; }
+    const card = document.querySelector('.onboard-card');
+    if (card) card.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-in-out' });
+  }
+  function updateOnboardSubmit() {
+    if (!onboardSubmit) return;
+    const name = (onboardName?.value || '').trim();
+    const valid = name.length >= 2;
+    onboardSubmit.disabled = !valid;
+  }
+
   function aesc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -872,8 +925,75 @@ C:\\path\\to\\python -m venv .venv
     }
   });
 
+  /* Onboarding 表单与头像交互 */
+  if (onboardName) onboardName.addEventListener('input', updateOnboardSubmit);
+  if (onboardAvatarUpload) onboardAvatarUpload.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { showOnboardError('图片请小于 2MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      onboardCustomDataUrl = reader.result;
+      onboardAvatar = 'custom';
+      if (onboardAvatarPreview) { onboardAvatarPreview.src = onboardCustomDataUrl; onboardAvatarPreview.hidden = false; }
+      if (onboardAvatars) {
+        onboardAvatars.querySelectorAll('.onboard-avatar').forEach((el) => {
+          if (el.classList.contains('onboard-avatar--upload')) {
+            el.classList.add('is-active', 'has-preview');
+            el.setAttribute('aria-checked', 'true');
+          } else {
+            el.classList.remove('is-active');
+            el.setAttribute('aria-checked', 'false');
+          }
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  if (onboardForm) onboardForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (onboardError) onboardError.hidden = true;
+    const name = (onboardName?.value || '').trim();
+    if (name.length < 2) { showOnboardError('昵称至少 2 个字符'); return; }
+    if (onboardSubmit) { onboardSubmit.disabled = true; onboardSubmit.innerHTML = '<span class="spinner-sm"></span> 同步中…'; }
+    const avatar = onboardAvatar === 'custom' && onboardCustomDataUrl ? onboardCustomDataUrl : onboardAvatar;
+    const res = await api('/api/auth/guest', { display_name: name, avatar });
+    if (onboardSubmit) onboardSubmit.innerHTML = '<span>同步身份并登录</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    if (res.ok && res.data.user) {
+      currentUser = res.data.user;
+      renderAuthArea();
+      const card = document.querySelector('.onboard-card');
+      if (card) {
+        card.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }], { duration: 350, easing: 'ease-in-out' });
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      closeOnboard();
+      enterSite();
+    } else {
+      if (onboardSubmit) onboardSubmit.disabled = false;
+      showOnboardError((res.data && res.data.error) || '同步失败，请重试');
+    }
+  });
+
   document.addEventListener('click', (e) => {
     if (e.target.closest('#authLoginBtn') || e.target.closest('#landingSignin')) { openAuth('login'); return; }
+    const avatarBtn = e.target.closest('[data-avatar]');
+    if (avatarBtn && onboardAvatars) {
+      onboardAvatar = avatarBtn.dataset.avatar;
+      onboardCustomDataUrl = '';
+      if (onboardAvatarUpload) onboardAvatarUpload.value = '';
+      if (onboardAvatarPreview) { onboardAvatarPreview.src = ''; onboardAvatarPreview.hidden = true; }
+      onboardAvatars.querySelectorAll('.onboard-avatar').forEach((el) => {
+        const isUpload = el.classList.contains('onboard-avatar--upload');
+        const active = el === avatarBtn;
+        el.classList.toggle('is-active', active);
+        el.setAttribute('aria-checked', active ? 'true' : 'false');
+        if (isUpload && !active) el.classList.remove('has-preview');
+      });
+      return;
+    }
+    const obClose = e.target.closest('[data-onboard-close]');
+    if (obClose) { closeOnboard(); return; }
     if (e.target.closest('#lampPull')) {
       if (!authModal) return;
       const cur = LAMP_COLORS.find((c) => authModal.classList.contains(c)) || LAMP_COLORS[0];
