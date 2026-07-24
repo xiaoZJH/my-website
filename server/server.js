@@ -201,11 +201,11 @@ function startWatermark() {
     return;
   }
   try {
-    wmChild = spawn(py, [WM_APP], {
-      env: { ...process.env, WM_PORT: String(WM_PORT) },
-      cwd: path.dirname(WM_APP),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  wmChild = spawn(py, [WM_APP], {
+    env: { ...process.env, WM_PORT: String(WM_PORT), WM_BASE_PATH: process.env.WM_BASE_PATH || '' },
+    cwd: path.dirname(WM_APP),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
     wmChild.stdout.on('data', () => {});
     wmChild.stderr.on('data', (d) => {
       const s = d.toString();

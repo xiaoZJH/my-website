@@ -74,6 +74,9 @@
   const MAX_FILE_SIZE = 20 * 1024 * 1024;      // 图片 20MB
   const MAX_VIDEO_SIZE = 500 * 1024 * 1024;    // 视频 500MB
 
+  // 生产环境部署在子路径（如 /watermark-remover/）时，API 调用需要带前缀
+  const BASE_PATH = (document.querySelector('meta[name="base-path"]')?.content || "").replace(/\/$/, "");
+
   // ---------- 状态 ----------
   let files = [];               // File[]（图片模式）
   let fileDataURLs = [];
@@ -611,7 +614,7 @@
     fd.append("algorithm", currentAlgo());
     fd.append("radius", radiusInput.value);
 
-    const resp = await fetch("/api/remove", { method: "POST", body: fd });
+    const resp = await fetch(BASE_PATH + "/api/remove", { method: "POST", body: fd });
     const data = await resp.json();
     if (!data.ok) { showToast(data.error || "处理失败，请重试"); return; }
 
@@ -639,7 +642,7 @@
 
     if (reused > 0) showToast(`${reused} 张未涂抹的图片已沿用第 ${firstStrokedIndex() + 1} 张的涂抹区域`);
 
-    const resp = await fetch("/api/remove-batch", { method: "POST", body: fd });
+    const resp = await fetch(BASE_PATH + "/api/remove-batch", { method: "POST", body: fd });
     const data = await resp.json();
     if (!data.ok) { showToast(data.error || "批量处理失败，请重试"); return; }
 
@@ -687,7 +690,7 @@
     fd.append("mode", mode);
 
     try {
-      const resp = await fetch("/api/video/remove", { method: "POST", body: fd });
+      const resp = await fetch(BASE_PATH + "/api/video/remove", { method: "POST", body: fd });
       const data = await resp.json();
       if (!data.ok) {
         showToast(data.error || "任务创建失败");
@@ -710,7 +713,7 @@
     if (pollingTimer) clearInterval(pollingTimer);
     pollingTimer = setInterval(async () => {
       try {
-        const resp = await fetch(`/api/video/status/${taskId}`);
+        const resp = await fetch(`${BASE_PATH}/api/video/status/${taskId}`);
         const d = await resp.json();
         if (!d.ok) { throw new Error(d.error || "查询失败"); }
         if (d.status === "processing") {
@@ -848,7 +851,7 @@
     fd.append("radius", radiusInput.value);
     setLoading(true, "正在检测水印位置并去除…");
     try {
-      const resp = await fetch("/api/detect", { method: "POST", body: fd });
+      const resp = await fetch(BASE_PATH + "/api/detect", { method: "POST", body: fd });
       const data = await resp.json();
       if (!data.ok) { showToast(data.error || "自动识别失败"); return; }
       beforeImg.src = fileDataURLs[0];
@@ -871,7 +874,7 @@
     fd.append("radius", radiusInput.value);
     fd.append("mode", "auto");
     try {
-      const resp = await fetch("/api/video/remove", { method: "POST", body: fd });
+      const resp = await fetch(BASE_PATH + "/api/video/remove", { method: "POST", body: fd });
       const data = await resp.json();
       if (!data.ok) { showToast(data.error || "任务创建失败"); setLoading(false); processBtn.disabled = false; return; }
       loadingText.textContent = "正在逐帧修复视频（自动检测模式）…";

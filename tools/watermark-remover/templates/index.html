@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="base-path" content="{{ base_path }}">
   <title>净影 · 图片 / 视频去水印工具</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
   <div class="bg-glow"></div>
@@ -168,6 +169,6 @@
 
   <footer class="site-footer">净影 · 本地运行，图片不上传至任何第三方服务器</footer>
 
-  <script src="/static/js/main.js?v=2"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}?v=3"></script>
 </body>
 </html>

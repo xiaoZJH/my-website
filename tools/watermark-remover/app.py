@@ -13,12 +13,13 @@ import zipfile
 
 import cv2
 import numpy as np
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Blueprint, jsonify, request, send_from_directory, render_template
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 WM_PORT = int(os.environ.get("WM_PORT", "5001"))
+BASE_PATH = os.environ.get("WM_BASE_PATH", "").rstrip("/")
 ALLOWED_EXT = {"png", "jpg", "jpeg", "webp", "bmp"}
 ALLOWED_VIDEO_EXT = {"mp4", "mov", "avi", "webm", "mkv"}
 MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500MB（视频上传）
@@ -31,8 +32,13 @@ _tasks_lock = threading.Lock()
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(RESULT_DIR, exist_ok=True)  # 关键：原代码漏建 results 目录，imwrite 会失败
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__,
+             static_url_path=f"{BASE_PATH}/static",
+             static_folder="static",
+             template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+
+bp = Blueprint("wm", __name__, url_prefix=BASE_PATH or None)
 
 
 def allowed_file(filename: str) -> bool:
@@ -143,12 +149,12 @@ def read_mask_from_request(target_shape) -> np.ndarray:
     return mask
 
 
-@app.route("/")
+@bp.route("/")
 def index():
-    return send_from_directory("templates", "index.html")
+    return render_template("index.html", base_path=BASE_PATH)
 
 
-@app.route("/api/remove", methods=["POST"])
+@bp.route("/api/remove", methods=["POST"])
 def remove_watermark():
     """单张去水印：接收原图与蒙版，返回修复结果。"""
     if "image" not in request.files or "mask" not in request.files:
@@ -172,13 +178,13 @@ def remove_watermark():
 
     return jsonify({
         "ok": True,
-        "result_url": f"/results/{filename}",
+        "result_url": f"{BASE_PATH}/results/{filename}",
         "width": int(img.shape[1]),
         "height": int(img.shape[0]),
     })
 
 
-@app.route("/api/remove-batch", methods=["POST"])
+@bp.route("/api/remove-batch", methods=["POST"])
 def remove_watermark_batch():
     """批量去水印：每张图片对应一个蒙版（前端逐张生成），结果打包 ZIP。"""
     images = request.files.getlist("images")
@@ -214,7 +220,7 @@ def remove_watermark_batch():
         cv2.imwrite(os.path.join(RESULT_DIR, out_name), res)
         results.append({
             "name": f.filename,
-            "url": f"/results/{out_name}",
+            "url": f"{BASE_PATH}/results/{out_name}",
             "width": int(img.shape[1]),
             "height": int(img.shape[0]),
         })
@@ -235,7 +241,7 @@ def remove_watermark_batch():
         "ok": True,
         "count": len(results),
         "results": results,
-        "zip_url": f"/results/{zip_name}",
+        "zip_url": f"{BASE_PATH}/results/{zip_name}",
     })
 
 
@@ -439,7 +445,7 @@ def process_video_task(task_id: str, video_path: str, mask_raw: np.ndarray,
         task.update({
             "status": "done",
             "progress": 100,
-            "result_url": f"/results/{final_name}",
+            "result_url": f"{BASE_PATH}/results/{final_name}",
             "name": orig_name,
         })
     except Exception as e:  # noqa: BLE001 - 任务内任何异常都需回传给前端
@@ -451,7 +457,7 @@ def process_video_task(task_id: str, video_path: str, mask_raw: np.ndarray,
             os.remove(video_path)
 
 
-@app.route("/api/video/remove", methods=["POST"])
+@bp.route("/api/video/remove", methods=["POST"])
 def remove_video_watermark():
     """创建视频去水印任务：保存视频与蒙版，后台逐帧修复，返回任务 ID。"""
     if "video" not in request.files:
@@ -492,7 +498,7 @@ def remove_video_watermark():
     return jsonify({"ok": True, "task_id": task_id})
 
 
-@app.route("/api/video/status/<task_id>")
+@bp.route("/api/video/status/<task_id>")
 def video_task_status(task_id):
     task = VIDEO_TASKS.get(task_id)
     if not task:
@@ -500,7 +506,7 @@ def video_task_status(task_id):
     return jsonify({"ok": True, **task})
 
 
-@app.route("/results/<path:filename>")
+@bp.route("/results/<path:filename>")
 def serve_result(filename):
     return send_from_directory(RESULT_DIR, filename)
 
@@ -511,7 +517,7 @@ def too_large(_e):
 
 
 # ====== 自动检测去水印（无需手动涂抹） ======
-@app.route("/api/detect", methods=["POST"])
+@bp.route("/api/detect", methods=["POST"])
 def auto_detect_remove():
     """自动检测图片/视频中的水印并去除。"""
     if "image" not in request.files:
@@ -532,12 +538,16 @@ def auto_detect_remove():
     cv2.imwrite(os.path.join(RESULT_DIR, filename), result)
     return jsonify({
         "ok": True,
-        "result_url": f"/results/{filename}",
+        "result_url": f"{BASE_PATH}/results/{filename}",
         "width": int(img.shape[1]),
         "height": int(img.shape[0]),
     })
 
 
+app.register_blueprint(bp)
+
+
 if __name__ == "__main__":
     # 仅本机监听，配合工具箱 Node 服务以 iframe 嵌入；端口可由 WM_PORT 覆盖
+    # 生产环境通过 Nginx 反代 /watermark-remover/ 到本端口
     app.run(host="127.0.0.1", port=WM_PORT, debug=False, use_reloader=False)
