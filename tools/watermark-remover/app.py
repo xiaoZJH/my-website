@@ -154,6 +154,12 @@ def index():
     return render_template("index.html", base_path=BASE_PATH)
 
 
+@bp.route("/api/wm-status", methods=["GET"])
+def wm_status():
+    """健康检查：供前端 iframe 内判断后端是否在线。"""
+    return jsonify({"ok": True})
+
+
 @bp.route("/api/remove", methods=["POST"])
 def remove_watermark():
     """单张去水印：接收原图与蒙版，返回修复结果。"""
