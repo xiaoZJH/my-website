@@ -343,59 +343,196 @@ def auto_detect_video(video_path):
     return final
 
 
+def _score_position(cx, cy, ww, wh):
+    """给候选区域的位置打分：四角、顶部、底部、边缘更可能是水印。"""
+    in_corner = (cx < ww * 0.22 and cy < wh * 0.22) or \
+                (cx > ww * 0.78 and cy < wh * 0.22) or \
+                (cx < ww * 0.22 and cy > wh * 0.78) or \
+                (cx > ww * 0.78 and cy > wh * 0.78)
+    in_top = cy < wh * 0.18
+    in_bottom = cy > wh * 0.82
+    in_edge = min(cx, ww - cx, cy, wh - cy) < ww * 0.05
+    score = 0
+    if in_corner: score += 40
+    if in_top: score += 25
+    if in_bottom: score += 30
+    if in_edge: score += 15
+    return score, in_corner, in_top, in_bottom, in_edge
+
+
+def _detect_text_blocks(gray, wh, ww):
+    """检测半透明/小字文字块（顶帽/黑帽 + MSER）。"""
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (0, 0), 2.0)
+    sharpened = cv2.addWeighted(enhanced, 1.5, blurred, -0.5, 0)
+
+    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 5))
+    top_hat = cv2.morphologyEx(sharpened, cv2.MORPH_TOPHAT, kernel_h)
+    black_hat = cv2.morphologyEx(sharpened, cv2.MORPH_BLACKHAT, kernel_h)
+    _, top_bin = cv2.threshold(top_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, black_bin = cv2.threshold(black_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    text_mask = cv2.bitwise_or(top_bin, black_bin)
+    text_mask = cv2.morphologyEx(text_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+    mser = cv2.MSER_create()
+    try:
+        regions, _ = mser.detectRegions(sharpened)
+    except cv2.error:
+        regions = []
+    mser_mask = np.zeros((wh, ww), np.uint8)
+    for region in regions:
+        hull = cv2.convexHull(region.reshape(-1, 1, 2))
+        area = cv2.contourArea(hull)
+        if area < 30 or area > 30000:
+            continue
+        x, y, bw, bh = cv2.boundingRect(hull)
+        if bw < 8 or bh < 4:
+            continue
+        ratio = bw / max(bh, 1)
+        if not (0.15 < ratio < 12):
+            continue
+        cx, cy = x + bw / 2, y + bh / 2
+        pos_score, *_ = _score_position(cx, cy, ww, wh)
+        if pos_score < 20:
+            continue
+        cv2.drawContours(mser_mask, [hull], -1, 255, -1)
+
+    return cv2.bitwise_or(text_mask, mser_mask)
+
+
+def _detect_bottom_banners(gray, wh, ww):
+    """检测顶部/底部半透明横幅条带。"""
+    band_mask = np.zeros((wh, ww), np.uint8)
+    if wh < 40 or ww < 40:
+        return band_mask
+
+    band_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ww // 4, 7))
+    band_hat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, band_kernel)
+    _, band_bin = cv2.threshold(band_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    band_region = np.zeros((wh, ww), np.uint8)
+    band_region[:int(wh * 0.20), :] = 255
+    band_region[int(wh * 0.80):, :] = 255
+    band_mask = cv2.bitwise_and(band_bin, band_region)
+
+    # 兜底：按行均值偏移检测低对比度半透明条带
+    row_mean = gray.mean(axis=1).astype(np.float32)
+    row_std = gray.std(axis=1).astype(np.float32)
+    bottom_h = int(wh * 0.25)
+    if wh > bottom_h:
+        upper_mean = float(row_mean[:wh - bottom_h].mean())
+    else:
+        upper_mean = float(row_mean.mean())
+    band_y = np.zeros((wh,), np.uint8)
+    for y in range(wh - bottom_h, wh):
+        diff = abs(float(row_mean[y]) - upper_mean)
+        if diff > 4 and float(row_std[y]) < 55:
+            band_y[y] = 255
+    if band_y.sum() > 0:
+        ys = np.where(band_y)[0]
+        segments = []
+        start = ys[0]
+        prev = ys[0]
+        for y in ys[1:]:
+            if y == prev + 1:
+                prev = y
+            else:
+                segments.append((start, prev))
+                start = prev = y
+        segments.append((start, prev))
+        for s, e in segments:
+            if e - s + 1 >= 3:
+                band_mask[max(s, wh - bottom_h):e+1, :] = 255
+    return band_mask
+
+
 def auto_detect_image(img: np.ndarray) -> np.ndarray:
-    """图片自动检测：仅识别画面极角区域（< 12% 边长）的极亮连通域。
-    宁可检测不到，也不误检复杂画面。
-    推荐用法：手动涂抹（更可靠）。"""
+    """图片自动检测：识别 AI 常见水印（半透明文字、角落 badge、底部横幅）。
+    返回与 img 等大的二值蒙版；未检测到返回 None。
+    """
     h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # 仅检测最外层 8% 边缘（很窄）
-    edge = np.zeros((h, w), np.uint8)
-    edge[:int(h * 0.08), :] = 255
-    edge[int(h * 0.92):, :] = 255
-    edge[:, :int(w * 0.08)] = 255
-    edge[:, int(w * 0.92):] = 255
-    # 极亮候选
-    light = ((gray > 150).astype(np.uint8)) * 255
+    min_dim = min(h, w)
+    if min_dim < 64:
+        return None
+
+    scale = 1.0
+    work = img.copy()
+    if min_dim > 1024:
+        scale = 1024.0 / min_dim
+        work = cv2.resize(work, (int(w * scale), int(h * scale)))
+    wh, ww = work.shape[:2]
+    img_area = wh * ww
+
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+    text_mask = _detect_text_blocks(gray, wh, ww)
+    band_mask = _detect_bottom_banners(gray, wh, ww)
+    combined = cv2.bitwise_or(text_mask, band_mask)
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+    cnts, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
-    m = cv2.bitwise_and(light, edge)
-    if m.sum() > 0:
-        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for c in cnts:
-            area = cv2.contourArea(c)
-            if area < 80 or area > 15000:
-                continue
-            x, y, bw, bh = cv2.boundingRect(c)
-            cx, cy = x + bw // 2, y + bh // 2
-            # 候选中心到最近角的距离（< 12% 边长才算水印真实位置）
-            d2corner = min(cx, w - cx, cy, h - cy) / max(min(h, w), 1)
-            if d2corner > 0.12:
-                continue                    # 太远，不在水印真实位置
-            ratio = bw / max(bh, 1)
-            if not (0.2 < ratio < 5.0):
-                continue
-            if not (12 < bw < 500 and 5 < bh < 150):
-                continue
-            # 高对比度（必须 > 30，排除自然高光）
-            c_mask = np.zeros((h, w), np.uint8)
-            cv2.drawContours(c_mask, [c], -1, 255, -1)
-            ring = cv2.dilate(c_mask, np.ones((15, 15), np.uint8),
-                              iterations=1) - c_mask
-            mp = c_mask > 0
-            rp = ring > 0
-            if mp.sum() < 10 or rp.sum() < 30:
-                continue
-            contrast = abs(gray[mp].mean() - gray[rp].mean())
-            if contrast < 30:                  # 高对比度要求：避免自然高光误检
-                continue
-            candidates.append((area, c))
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area < 80 or area > img_area * 0.10:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        if bw < 12 or bh < 8:
+            continue
+        cx, cy = x + bw / 2, y + bh / 2
+        ratio = bw / max(bh, 1)
+        pos_score, in_corner, in_top, in_bottom, in_edge = _score_position(cx, cy, ww, wh)
+
+        shape_score = 0
+        if 0.25 < ratio < 10:
+            shape_score += 20
+        if in_bottom and bw > ww * 0.20 and bh < wh * 0.12:
+            shape_score += 30  # 底部横幅
+        if in_top and bw < ww * 0.30 and bh < wh * 0.08:
+            shape_score += 15  # 顶部小字
+        if in_corner and bw < ww * 0.30 and bh < wh * 0.15:
+            shape_score += 10  # 角落 badge
+
+        c_mask = np.zeros((wh, ww), np.uint8)
+        cv2.drawContours(c_mask, [c], -1, 255, -1)
+        ring = cv2.dilate(c_mask, np.ones((7, 7), np.uint8), iterations=1) - c_mask
+        contrast_score = 0
+        if c_mask.sum() > 0 and ring.sum() > 0:
+            inner_mean = float(gray[c_mask > 0].mean())
+            ring_mean = float(gray[ring > 0].mean())
+            contrast_score = min(abs(inner_mean - ring_mean), 60)
+
+        total_score = pos_score + shape_score + contrast_score
+        if total_score < 55:
+            continue
+        candidates.append((total_score, area, c))
+
     if not candidates:
         return None
-    best = max(candidates, key=lambda c: c[0])
-    final = np.zeros((h, w), np.uint8)
-    cv2.drawContours(final, [best[1]], -1, 255, -1)
-    return cv2.dilate(final, np.ones((3, 3), np.uint8), iterations=1)
+
+    candidates.sort(reverse=True, key=lambda x: x[0])
+    final_mask = np.zeros((wh, ww), np.uint8)
+    total_area = 0
+    for score, area, c in candidates:
+        if total_area + area > img_area * 0.15:
+            break
+        cv2.drawContours(final_mask, [c], -1, 255, -1)
+        total_area += area
+
+    if int(final_mask.sum()) == 0:
+        return None
+
+    final_mask = cv2.dilate(final_mask, np.ones((9, 9), np.uint8), iterations=1)
+
+    if scale < 1.0:
+        final_mask = cv2.resize(final_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+        final_mask = cv2.dilate(final_mask, np.ones((5, 5), np.uint8), iterations=1)
+    else:
+        final_mask = cv2.dilate(final_mask, np.ones((7, 7), np.uint8), iterations=1)
+
+    # 安全闸：最终蒙版不应超过图像 18%，避免误检毁图
+    if int(final_mask.sum()) / 255 > h * w * 0.18:
+        return None
+    return final_mask
 
 
 def process_video_task(task_id: str, video_path: str, mask_raw: np.ndarray,
