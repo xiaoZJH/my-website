@@ -588,6 +588,7 @@
       processVideo();
       return;
     }
+    // 图片模式：统一包裹错误处理，任何异常都给出可见提示，避免“点了没反应”
     processBtn.disabled = true;
     setLoading(true, files.length > 1 ? `正在批量修复 ${files.length} 张图片…` : "正在智能修复，请稍候…");
     try {
@@ -598,7 +599,7 @@
       }
     } catch (err) {
       console.error(err);
-      showToast("网络错误，处理失败");
+      showToast("处理失败：" + (err && err.message ? err.message : "未知错误，请重试"));
     } finally {
       setLoading(false);
       processBtn.disabled = false;
@@ -620,16 +621,22 @@
     fd.append("radius", radiusInput.value);
 
     const resp = await fetch(BASE_PATH + "/api/remove", { method: "POST", body: fd });
-    const data = await resp.json();
+    if (!resp.ok) { showToast("处理请求失败(HTTP " + resp.status + ")"); return; }
+    let data;
+    try { data = await resp.json(); } catch (_) { showToast("返回数据异常，无法解析结果"); return; }
     if (!data.ok) { showToast(data.error || "处理失败，请重试"); return; }
 
     beforeImg.src = fileDataURLs[0];
     downloadBtn.href = data.result_url;
-    afterImg.onload = () => {
-      initCompare();
-      showResultSection(singleResult);
+    // 先显示结果容器：hidden(display:none) 下的 <img> 浏览器不会加载，
+    // 否则 afterImg.onload 永不触发、showResultSection 不执行 → 看起来“没反应”
+    showResultSection(singleResult);
+    afterImg.onload = () => { initCompare(); };
+    afterImg.onerror = () => {
+      showToast("⚠ 结果图加载失败，可能是服务器代理未放行结果路径，请重试或检查配置");
     };
-    afterImg.src = data.result_url + "?t=" + Date.now();
+    afterImg.src = data.result_url; // 接口直接返回 data URI（base64），无需追加缓存参数
+    if (afterImg.complete && afterImg.naturalWidth) { initCompare(); } // 命中缓存时同步初始化
   }
 
   // ---------- 批量处理 ----------
@@ -857,12 +864,17 @@
     setLoading(true, "正在检测水印位置并去除…");
     try {
       const resp = await fetch(BASE_PATH + "/api/detect", { method: "POST", body: fd });
+      if (!resp.ok) { showToast("自动识别请求失败(HTTP " + resp.status + ")"); return; }
       const data = await resp.json();
       if (!data.ok) { showToast(data.error || "自动识别失败"); return; }
       beforeImg.src = fileDataURLs[0];
       downloadBtn.href = data.result_url;
-      afterImg.onload = () => { initCompare(); showResultSection(singleResult); };
-      afterImg.src = data.result_url + "?t=" + Date.now();
+      // 先显示结果容器，避免 hidden 下图片不加载导致 onload 不触发
+      showResultSection(singleResult);
+      afterImg.onload = () => { initCompare(); };
+      afterImg.onerror = () => { showToast("⚠ 结果图加载失败，请重试或检查服务器配置"); };
+      afterImg.src = data.result_url; // 接口直接返回 data URI（base64），不可追加 ?t= 缓存参数
+      if (afterImg.complete && afterImg.naturalWidth) { initCompare(); }
     } catch (err) {
       console.error(err);
       showToast("去水印服务未响应,请确认服务器后端已启动(需安装 Python + OpenCV)");

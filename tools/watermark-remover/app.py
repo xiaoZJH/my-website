@@ -5,6 +5,7 @@
 支持图片单张 / 批量处理（打包 ZIP），视频逐帧修复并保留原音轨
 """
 import os
+import base64
 import subprocess
 import threading
 import time
@@ -138,6 +139,15 @@ def parse_params() -> tuple:
     return algorithm, radius
 
 
+def img_to_data_uri(img: np.ndarray) -> str:
+    """将 OpenCV 图像编码为 PNG 的 data URI，直接随接口返回，
+    避免写盘 + 再单独请求结果图（旧方式曾因 imwrite 静默失败导致结果图 404、前端“点击无反应”）。"""
+    ok, buf = cv2.imencode(".png", img)
+    if not ok:
+        raise RuntimeError("结果图像编码失败")
+    return "data:image/png;base64," + base64.b64encode(buf).decode("ascii")
+
+
 def read_mask_from_request(target_shape) -> np.ndarray:
     mask_data = np.frombuffer(request.files["mask"].read(), np.uint8)
     mask = cv2.imdecode(mask_data, cv2.IMREAD_GRAYSCALE)
@@ -179,12 +189,9 @@ def remove_watermark():
 
     result = enhance_result(img, mask, algorithm, radius)
 
-    filename = f"{uuid.uuid4().hex[:12]}_{int(time.time())}.png"
-    cv2.imwrite(os.path.join(RESULT_DIR, filename), result)
-
     return jsonify({
         "ok": True,
-        "result_url": f"{BASE_PATH}/results/{filename}",
+        "result_url": img_to_data_uri(result),
         "width": int(img.shape[1]),
         "height": int(img.shape[0]),
     })
@@ -226,7 +233,7 @@ def remove_watermark_batch():
         cv2.imwrite(os.path.join(RESULT_DIR, out_name), res)
         results.append({
             "name": f.filename,
-            "url": f"{BASE_PATH}/results/{out_name}",
+            "url": img_to_data_uri(res),
             "width": int(img.shape[1]),
             "height": int(img.shape[0]),
         })
@@ -540,11 +547,9 @@ def auto_detect_remove():
     if mask is None:
         return jsonify({"ok": False, "error": "未在画面四角检测到明显水印，请切换到手绘涂抹模式"}), 400
     result = enhance_result(img, mask, algorithm, radius)
-    filename = f"{uuid.uuid4().hex[:12]}_{int(time.time())}.png"
-    cv2.imwrite(os.path.join(RESULT_DIR, filename), result)
     return jsonify({
         "ok": True,
-        "result_url": f"{BASE_PATH}/results/{filename}",
+        "result_url": img_to_data_uri(result),
         "width": int(img.shape[1]),
         "height": int(img.shape[0]),
     })
