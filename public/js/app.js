@@ -668,7 +668,7 @@
       if (!ok && i < 3) await new Promise((res) => setTimeout(res, 700));
     }
     if (ok) {
-      box.innerHTML = `<iframe class="wm-iframe" src="${esc(WM_URL)}" title="去水印工具" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>`;
+      box.innerHTML = `<iframe class="wm-iframe" src="${esc(WM_URL)}?cb=${Date.now()}" title="去水印工具" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>`;
     } else {
       box.innerHTML = `
         <div class="wm-error">
