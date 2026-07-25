@@ -76,20 +76,27 @@ def feather_edges(img: np.ndarray, res: np.ndarray, mask: np.ndarray,
 
 
 def poisson_blend(src: np.ndarray, dst: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """泊松融合：以 inpaint 结果为源，与原图做无缝克隆，边缘几乎无痕。"""
+    """泊松融合：以 src 为源，与 dst 做无缝克隆。
+    当 mask 贴近图像边缘时，采用镜像 padding 扩展图像，使 seamlessClone 在边缘也能稳定融合。
+    """
     h, w = mask.shape[:2]
     ys, xs = np.nonzero(mask)
     if len(xs) == 0:
         return src
-    margin = 8
-    # 蒙版贴近图像边缘时 seamlessClone 不稳定，回退为 inpaint 原始结果
-    if (xs.min() < margin or ys.min() < margin
-            or xs.max() > w - margin or ys.max() > h - margin):
-        return src
+
     try:
         center = (int(xs.mean()), int(ys.mean()))
-        # NORMAL_CLONE：完全采用修复内容并做边界融合；
-        # MIXED_CLONE 会保留原图高梯度特征（水印文字），导致残留
+        margin = 8
+        near_edge = (xs.min() < margin or ys.min() < margin or
+                     xs.max() > w - margin or ys.max() > h - margin)
+        if near_edge:
+            pad = max(32, int(max(h, w) * 0.04))
+            src_pad = cv2.copyMakeBorder(src, pad, pad, pad, pad, cv2.BORDER_REFLECT_101)
+            dst_pad = cv2.copyMakeBorder(dst, pad, pad, pad, pad, cv2.BORDER_REFLECT_101)
+            mask_pad = cv2.copyMakeBorder(mask, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0)
+            center_pad = (center[0] + pad, center[1] + pad)
+            blended = cv2.seamlessClone(src_pad, dst_pad, mask_pad, center_pad, cv2.NORMAL_CLONE)
+            return blended[pad:-pad, pad:-pad]
         return cv2.seamlessClone(src, dst, mask, center, cv2.NORMAL_CLONE)
     except cv2.error:
         return src
@@ -120,11 +127,43 @@ def match_texture(img: np.ndarray, res: np.ndarray, mask: np.ndarray) -> np.ndar
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def frequency_separation_inpaint(img: np.ndarray, mask: np.ndarray,
+                                 radius: int = 5) -> np.ndarray:
+    """频率分离修复：低频层负责结构/颜色，高频层负责纹理细节。
+
+    传统 cv2.inpaint 一次性同时修补结构和纹理，容易在岩石、草地、织物等
+    规则纹理上产生「涂抹感」。本函数将图像分解为低频（medianBlur）和高频
+    （原图-低频），分别用不同半径修复后再相加，从而在填补水印的同时保留
+    周围纹理，使修复区更难被肉眼察觉。
+    """
+    h, w = img.shape[:2]
+    # 自适应中值模糊核：一般取图像短边的 1/30，且为奇数，限制在 [15, 51]
+    k = min(max(15, min(h, w) // 30), 51)
+    if k % 2 == 0:
+        k += 1
+
+    low = cv2.medianBlur(img, k)                          # 结构/颜色
+    high = img.astype(np.float32) - low.astype(np.float32)  # 纹理/细节
+
+    # 低频层：大半径 Telea 负责结构补全（uint8 3-channel 直接支持）
+    low_inpainted = cv2.inpaint(low, mask, radius * 2 + 1, cv2.INPAINT_TELEA)
+
+    # 高频层：opencv inpaint 对 float32 3-channel 不支持，逐通道 float32 1-channel 处理
+    high_inpainted = np.zeros_like(high)
+    for c in range(3):
+        high_inpainted[..., c] = cv2.inpaint(
+            high[..., c], mask, max(1, radius), cv2.INPAINT_TELEA)
+
+    combined = np.clip(low_inpainted.astype(np.float32) +
+                       high_inpainted, 0, 255).astype(np.uint8)
+    return combined
+
+
 def enhance_result(img: np.ndarray, mask: np.ndarray,
                    algorithm: str, radius: int) -> np.ndarray:
     """按所选算法执行修复，并统一做纹理匹配增强。"""
     if algorithm == "poisson":
-        base = cv2.inpaint(img, mask, radius, cv2.INPAINT_TELEA)
+        base = frequency_separation_inpaint(img, mask, radius)
         res = poisson_blend(base, img, mask)
     else:
         flag = cv2.INPAINT_TELEA if algorithm == "telea" else cv2.INPAINT_NS
