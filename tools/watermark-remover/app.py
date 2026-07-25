@@ -345,34 +345,108 @@ def auto_detect_video(video_path):
 
 def _score_position(cx, cy, ww, wh):
     """给候选区域的位置打分：四角、顶部、底部、边缘更可能是水印。"""
-    in_corner = (cx < ww * 0.22 and cy < wh * 0.22) or \
-                (cx > ww * 0.78 and cy < wh * 0.22) or \
-                (cx < ww * 0.22 and cy > wh * 0.78) or \
-                (cx > ww * 0.78 and cy > wh * 0.78)
-    in_top = cy < wh * 0.18
-    in_bottom = cy > wh * 0.82
-    in_edge = min(cx, ww - cx, cy, wh - cy) < ww * 0.05
+    in_corner = (cx < ww * 0.18 and cy < wh * 0.18) or \
+                (cx > ww * 0.82 and cy < wh * 0.18) or \
+                (cx < ww * 0.18 and cy > wh * 0.82) or \
+                (cx > ww * 0.82 and cy > wh * 0.82)
+    in_top = cy < wh * 0.15
+    in_bottom = cy > wh * 0.85
+    in_edge = min(cx, ww - cx, cy, wh - cy) < ww * 0.06
     score = 0
     if in_corner: score += 40
-    if in_top: score += 25
-    if in_bottom: score += 30
-    if in_edge: score += 15
+    if in_top: score += 20
+    if in_bottom: score += 25
+    if in_edge: score += 10
     return score, in_corner, in_top, in_bottom, in_edge
 
 
-def _detect_text_blocks(gray, wh, ww):
-    """检测半透明/小字文字块（顶帽/黑帽 + MSER）。"""
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-    blurred = cv2.GaussianBlur(enhanced, (0, 0), 2.0)
-    sharpened = cv2.addWeighted(enhanced, 1.5, blurred, -0.5, 0)
+def _detect_corner_badges(gray, wh, ww):
+    """检测四角的半透明圆角矩形 badge（如左上角「AI生成」）。
+    基于 Canny 边缘 + 矩形拟合，只返回最像 badge 的 1~2 个候选。
+    """
+    roi = np.zeros((wh, ww), np.uint8)
+    mx = int(ww * 0.18)
+    my = int(wh * 0.18)
+    roi[:my, :mx] = 255
+    roi[:my, ww - mx:] = 255
+    roi[wh - my:, :mx] = 255
+    roi[wh - my:, ww - mx:] = 255
 
-    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 5))
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 25, 75)
+    edges = cv2.bitwise_and(edges, roi)
+    # 连接 badge 圆角处可能断裂的边缘
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+    cnts, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    candidates = []
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area < 80 or area > ww * wh * 0.015:
+            continue
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.08 * peri, True)
+        x, y, bw, bh = cv2.boundingRect(approx)
+        if bw < 20 or bh < 10 or bw > ww * 0.25 or bh > wh * 0.15:
+            continue
+        ratio = bw / max(bh, 1)
+        if not (1.5 < ratio < 10):
+            continue
+        rect_area = bw * bh
+        if rect_area <= 0 or area / rect_area < 0.30:
+            continue
+        hull = cv2.convexHull(c)
+        hull_area = cv2.contourArea(hull)
+        if hull_area <= 0 or area / hull_area < 0.55:
+            continue
+        cx, cy = x + bw / 2, y + bh / 2
+        # 必须严格贴近角落（到最近边缘的距离 < 短边 10%）
+        corner_dist = min(cx, ww - cx, cy, wh - cy)
+        if corner_dist > min(ww, wh) * 0.10:
+            continue
+        c_mask = np.zeros((wh, ww), np.uint8)
+        cv2.drawContours(c_mask, [hull], -1, 255, -1)
+        ring = cv2.dilate(c_mask, np.ones((7, 7), np.uint8), iterations=1) - c_mask
+        contrast = 0.0
+        if c_mask.sum() > 0 and ring.sum() > 0:
+            inner_mean = float(gray[c_mask > 0].mean())
+            ring_mean = float(gray[ring > 0].mean())
+            contrast = abs(inner_mean - ring_mean)
+            if contrast < 3:
+                continue
+        # 打分：对比度越高、越贴角、面积适中，越可能是 badge
+        score = contrast * 2.0 + (min(ww, wh) * 0.10 - corner_dist) * 0.15 + area / 800.0
+        candidates.append((score, hull))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True, key=lambda x: x[0])
+    mask = np.zeros((wh, ww), np.uint8)
+    for _, hull in candidates[:2]:
+        cv2.drawContours(mask, [hull], -1, 255, -1)
+    return mask
+
+
+def _detect_text_blocks(gray, wh, ww):
+    """在很窄的边缘带检测半透明/小字文字块，避免把天空/纹理误判为水印。"""
+    edge = np.zeros((wh, ww), np.uint8)
+    edge[:int(wh * 0.10), :] = 255
+    edge[int(wh * 0.90):, :] = 255
+    edge[:, :int(ww * 0.10)] = 255
+    edge[:, int(ww * 0.90):] = 255
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (0, 0), 1.5)
+    sharpened = cv2.addWeighted(enhanced, 1.4, blurred, -0.4, 0)
+
+    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
     top_hat = cv2.morphologyEx(sharpened, cv2.MORPH_TOPHAT, kernel_h)
     black_hat = cv2.morphologyEx(sharpened, cv2.MORPH_BLACKHAT, kernel_h)
     _, top_bin = cv2.threshold(top_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, black_bin = cv2.threshold(black_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     text_mask = cv2.bitwise_or(top_bin, black_bin)
+    text_mask = cv2.bitwise_and(text_mask, edge)
     text_mask = cv2.morphologyEx(text_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
 
     mser = cv2.MSER_create()
@@ -384,17 +458,17 @@ def _detect_text_blocks(gray, wh, ww):
     for region in regions:
         hull = cv2.convexHull(region.reshape(-1, 1, 2))
         area = cv2.contourArea(hull)
-        if area < 30 or area > 30000:
+        if area < 40 or area > 15000:
             continue
         x, y, bw, bh = cv2.boundingRect(hull)
-        if bw < 8 or bh < 4:
+        if bw < 10 or bh < 5 or bw > ww * 0.30 or bh > wh * 0.20:
             continue
         ratio = bw / max(bh, 1)
-        if not (0.15 < ratio < 12):
+        if not (0.3 < ratio < 10):
             continue
         cx, cy = x + bw / 2, y + bh / 2
         pos_score, *_ = _score_position(cx, cy, ww, wh)
-        if pos_score < 20:
+        if pos_score < 25:
             continue
         cv2.drawContours(mser_mask, [hull], -1, 255, -1)
 
@@ -411,14 +485,14 @@ def _detect_bottom_banners(gray, wh, ww):
     band_hat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, band_kernel)
     _, band_bin = cv2.threshold(band_hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     band_region = np.zeros((wh, ww), np.uint8)
-    band_region[:int(wh * 0.20), :] = 255
-    band_region[int(wh * 0.80):, :] = 255
+    band_region[:int(wh * 0.18), :] = 255
+    band_region[int(wh * 0.82):, :] = 255
     band_mask = cv2.bitwise_and(band_bin, band_region)
 
     # 兜底：按行均值偏移检测低对比度半透明条带
     row_mean = gray.mean(axis=1).astype(np.float32)
     row_std = gray.std(axis=1).astype(np.float32)
-    bottom_h = int(wh * 0.25)
+    bottom_h = int(wh * 0.22)
     if wh > bottom_h:
         upper_mean = float(row_mean[:wh - bottom_h].mean())
     else:
@@ -426,7 +500,7 @@ def _detect_bottom_banners(gray, wh, ww):
     band_y = np.zeros((wh,), np.uint8)
     for y in range(wh - bottom_h, wh):
         diff = abs(float(row_mean[y]) - upper_mean)
-        if diff > 4 and float(row_std[y]) < 55:
+        if diff > 5 and float(row_std[y]) < 55:
             band_y[y] = 255
     if band_y.sum() > 0:
         ys = np.where(band_y)[0]
@@ -447,8 +521,8 @@ def _detect_bottom_banners(gray, wh, ww):
 
 
 def auto_detect_image(img: np.ndarray) -> np.ndarray:
-    """图片自动检测：识别 AI 常见水印（半透明文字、角落 badge、底部横幅）。
-    返回与 img 等大的二值蒙版；未检测到返回 None。
+    """图片自动检测：优先识别四角半透明圆角矩形 badge（如 AI生成），
+    未命中时再回退到文字块/横幅检测。返回与 img 等大的二值蒙版；未检测到返回 None。
     """
     h, w = img.shape[:2]
     min_dim = min(h, w)
@@ -464,6 +538,18 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     img_area = wh * ww
 
     gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+
+    # 1) 优先检测四角 badge
+    badge_mask = _detect_corner_badges(gray, wh, ww)
+    if badge_mask is not None and int(badge_mask.sum()) > 0:
+        final_mask = cv2.dilate(badge_mask, np.ones((19, 19), np.uint8), iterations=1)
+        if scale < 1.0:
+            final_mask = cv2.resize(final_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+            final_mask = cv2.dilate(final_mask, np.ones((9, 9), np.uint8), iterations=1)
+        if int(final_mask.sum()) / 255 <= h * w * 0.05:
+            return final_mask
+
+    # 2) 回退：文字/横幅检测
     text_mask = _detect_text_blocks(gray, wh, ww)
     band_mask = _detect_bottom_banners(gray, wh, ww)
     combined = cv2.bitwise_or(text_mask, band_mask)
@@ -473,7 +559,7 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     candidates = []
     for c in cnts:
         area = cv2.contourArea(c)
-        if area < 80 or area > img_area * 0.10:
+        if area < 80 or area > img_area * 0.05:
             continue
         x, y, bw, bh = cv2.boundingRect(c)
         if bw < 12 or bh < 8:
@@ -483,14 +569,14 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
         pos_score, in_corner, in_top, in_bottom, in_edge = _score_position(cx, cy, ww, wh)
 
         shape_score = 0
-        if 0.25 < ratio < 10:
-            shape_score += 20
+        if 0.3 < ratio < 10:
+            shape_score += 15
         if in_bottom and bw > ww * 0.20 and bh < wh * 0.12:
-            shape_score += 30  # 底部横幅
-        if in_top and bw < ww * 0.30 and bh < wh * 0.08:
-            shape_score += 15  # 顶部小字
-        if in_corner and bw < ww * 0.30 and bh < wh * 0.15:
-            shape_score += 10  # 角落 badge
+            shape_score += 30
+        if in_top and bw < ww * 0.28 and bh < wh * 0.08:
+            shape_score += 15
+        if in_corner and bw < ww * 0.25 and bh < wh * 0.12:
+            shape_score += 10
 
         c_mask = np.zeros((wh, ww), np.uint8)
         cv2.drawContours(c_mask, [c], -1, 255, -1)
@@ -502,7 +588,7 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
             contrast_score = min(abs(inner_mean - ring_mean), 60)
 
         total_score = pos_score + shape_score + contrast_score
-        if total_score < 55:
+        if total_score < 60:
             continue
         candidates.append((total_score, area, c))
 
@@ -513,7 +599,7 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     final_mask = np.zeros((wh, ww), np.uint8)
     total_area = 0
     for score, area, c in candidates:
-        if total_area + area > img_area * 0.15:
+        if total_area + area > img_area * 0.08:
             break
         cv2.drawContours(final_mask, [c], -1, 255, -1)
         total_area += area
@@ -521,21 +607,18 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     if int(final_mask.sum()) == 0:
         return None
 
-    final_mask = cv2.dilate(final_mask, np.ones((9, 9), np.uint8), iterations=1)
+    final_mask = cv2.dilate(final_mask, np.ones((11, 11), np.uint8), iterations=1)
 
     if scale < 1.0:
         final_mask = cv2.resize(final_mask, (w, h), interpolation=cv2.INTER_NEAREST)
         final_mask = cv2.dilate(final_mask, np.ones((5, 5), np.uint8), iterations=1)
-    else:
-        final_mask = cv2.dilate(final_mask, np.ones((7, 7), np.uint8), iterations=1)
 
-    # 安全闸：最终蒙版不应超过图像 18%，避免误检毁图
-    if int(final_mask.sum()) / 255 > h * w * 0.18:
+    if int(final_mask.sum()) / 255 > h * w * 0.10:
         return None
     return final_mask
 
 
-def process_video_task(task_id: str, video_path: str, mask_raw: np.ndarray,
+def auto_detect_video(task_id: str, video_path: str, mask_raw: np.ndarray,
                        algorithm: str, radius: int, orig_name: str, mode: str = "fixed"):
     """后台线程：逐帧修复视频水印并更新进度。"""
     task = VIDEO_TASKS[task_id]
