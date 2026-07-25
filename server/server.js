@@ -451,6 +451,29 @@ function serveStatic(req, res) {
   });
 }
 
+// ---------- 去水印反向代理（同源 /watermark-remover/* → 内部 Flask :WM_PORT） ----------
+function proxyWatermark(req, res) {
+  const options = {
+    host: '127.0.0.1',
+    port: WM_PORT,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `127.0.0.1:${WM_PORT}` },
+  };
+  const proxyReq = http.request(options, (proxyRes) => {
+    const headers = { ...proxyRes.headers };
+    // 去掉可能导致 Node 重复分块的编码头，由 Node 正常流式转发
+    if (headers['transfer-encoding']) delete headers['transfer-encoding'];
+    res.writeHead(proxyRes.statusCode, headers);
+    proxyRes.pipe(res);
+  });
+  proxyReq.on('error', (e) => {
+    res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('去水印服务暂时不可用（' + (e.code || e.message) + '），请确认后端已启动');
+  });
+  req.pipe(proxyReq);
+}
+
 // ---------- 去水印 sidecar（Flask + OpenCV） ----------
 const WM_APP = path.join(ROOT, 'tools', 'watermark-remover', 'app.py');
 const WM_BASE_PATH = process.env.WM_BASE_PATH || '';
@@ -551,6 +574,11 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/auth/guest' && req.method === 'POST') return handleGuest(req, res);
   if (pathname === '/api/auth/logout' && req.method === 'POST') return handleLogout(req, res);
   if (pathname === '/api/auth/me' && req.method === 'GET') return handleMe(req, res);
+
+  // 去水印：同源路径经 Node 转发到内部 Flask（外部只暴露 4173，5001 不对外）
+  if (pathname === '/watermark-remover' || pathname.startsWith('/watermark-remover/')) {
+    return proxyWatermark(req, res);
+  }
 
   if (pathname.startsWith('/api/')) return json(res, 404, { error: 'not found' });
   return serveStatic(req, res);

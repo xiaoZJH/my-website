@@ -6,8 +6,8 @@
 
   const view = document.getElementById('view');
   // 去水印（Flask + OpenCV）sidecar 服务地址
-  // 本地开发直接连 127.0.0.1:5001；生产环境通过 Nginx 反代到 /watermark-remover/
-  const WM_URL = (window.__WM_URL__) || (/^(localhost|127\.0\.0\.1)$/i.test(location.hostname) ? 'http://127.0.0.1:5001/watermark-remover/' : '/watermark-remover/');
+  // 统一同源：/watermark-remover/ 由 Node 主服务反向代理到内部 Flask，外部只暴露 4173
+  const WM_URL = (window.__WM_URL__) || '/watermark-remover/';
   const navLinks = Array.from(document.querySelectorAll('.nav__link'));
   const drawer = document.getElementById('drawer');
   const drawerBody = document.getElementById('drawerBody');
