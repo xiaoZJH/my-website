@@ -542,10 +542,10 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     # 1) 优先检测四角 badge
     badge_mask = _detect_corner_badges(gray, wh, ww)
     if badge_mask is not None and int(badge_mask.sum()) > 0:
-        final_mask = cv2.dilate(badge_mask, np.ones((19, 19), np.uint8), iterations=1)
+        final_mask = cv2.dilate(badge_mask, np.ones((25, 25), np.uint8), iterations=2)
         if scale < 1.0:
             final_mask = cv2.resize(final_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-            final_mask = cv2.dilate(final_mask, np.ones((9, 9), np.uint8), iterations=1)
+            final_mask = cv2.dilate(final_mask, np.ones((15, 15), np.uint8), iterations=2)
         if int(final_mask.sum()) / 255 <= h * w * 0.05:
             return final_mask
 
@@ -607,11 +607,11 @@ def auto_detect_image(img: np.ndarray) -> np.ndarray:
     if int(final_mask.sum()) == 0:
         return None
 
-    final_mask = cv2.dilate(final_mask, np.ones((11, 11), np.uint8), iterations=1)
+    final_mask = cv2.dilate(final_mask, np.ones((25, 25), np.uint8), iterations=2)
 
     if scale < 1.0:
         final_mask = cv2.resize(final_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-        final_mask = cv2.dilate(final_mask, np.ones((5, 5), np.uint8), iterations=1)
+        final_mask = cv2.dilate(final_mask, np.ones((9, 9), np.uint8), iterations=2)
 
     if int(final_mask.sum()) / 255 > h * w * 0.10:
         return None
