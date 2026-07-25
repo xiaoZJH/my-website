@@ -906,7 +906,7 @@
   // ---------- 后端健康检测 ----------
   async function checkWmStatus() {
     try {
-      const r = await fetch("/api/wm-status");
+      const r = await fetch(BASE_PATH + "/api/wm-status");
       const d = await r.json();
       wmOnline = !!(d && d.ok);
     } catch (_) { wmOnline = false; }
