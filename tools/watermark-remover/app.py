@@ -76,27 +76,25 @@ def feather_edges(img: np.ndarray, res: np.ndarray, mask: np.ndarray,
 
 
 def poisson_blend(src: np.ndarray, dst: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """泊松融合：以 src 为源，与 dst 做无缝克隆。
-    当 mask 贴近图像边缘时，采用镜像 padding 扩展图像，使 seamlessClone 在边缘也能稳定融合。
+    """泊松融合：以 src 为源，与 dst 做无缝克隆，使修复区边界自然过渡。
+
+    当 mask 贴近图像边缘时，seamlessClone 没有足够邻域可供泊松求解，
+    反而会把已保留的纹理再次抹平（产生糊块）。此时直接返回频率分离
+    修复结果（src 本身已保留纹理），效果反而更好。
     """
     h, w = mask.shape[:2]
     ys, xs = np.nonzero(mask)
     if len(xs) == 0:
         return src
 
+    margin = 12
+    near_edge = (xs.min() < margin or ys.min() < margin or
+                 xs.max() > w - margin or ys.max() > h - margin)
+    if near_edge:
+        # 边缘水印：无足够邻域做泊松融合，直接用频率分离结果（已保留纹理）
+        return src
     try:
         center = (int(xs.mean()), int(ys.mean()))
-        margin = 8
-        near_edge = (xs.min() < margin or ys.min() < margin or
-                     xs.max() > w - margin or ys.max() > h - margin)
-        if near_edge:
-            pad = max(32, int(max(h, w) * 0.04))
-            src_pad = cv2.copyMakeBorder(src, pad, pad, pad, pad, cv2.BORDER_REFLECT_101)
-            dst_pad = cv2.copyMakeBorder(dst, pad, pad, pad, pad, cv2.BORDER_REFLECT_101)
-            mask_pad = cv2.copyMakeBorder(mask, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0)
-            center_pad = (center[0] + pad, center[1] + pad)
-            blended = cv2.seamlessClone(src_pad, dst_pad, mask_pad, center_pad, cv2.NORMAL_CLONE)
-            return blended[pad:-pad, pad:-pad]
         return cv2.seamlessClone(src, dst, mask, center, cv2.NORMAL_CLONE)
     except cv2.error:
         return src
