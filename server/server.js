@@ -488,7 +488,8 @@ function proxyWatermark(req, res) {
 
 // ---------- 去水印 sidecar（Flask + OpenCV） ----------
 const WM_APP = path.join(ROOT, 'tools', 'watermark-remover', 'app.py');
-const WM_BASE_PATH = process.env.WM_BASE_PATH || '';
+// 默认前缀与 Nginx 反代 / 反向代理路径一致；生产环境可用环境变量覆盖
+const WM_BASE_PATH = process.env.WM_BASE_PATH || '/watermark-remover';
 const WM_PORT = parseInt(process.env.WM_PORT || '5001', 10);
 let wmChild = null;
 
@@ -538,8 +539,85 @@ function startWatermark() {
 function stopWatermark() {
   if (wmChild) { try { wmChild.kill(); } catch (_) {} wmChild = null; }
 }
-process.on('SIGINT', () => { stopWatermark(); process.exit(0); });
-process.on('SIGTERM', () => { stopWatermark(); process.exit(0); });
+process.on('SIGINT', () => { stopWatermark(); stopDocxWatermark(); process.exit(0); });
+process.on('SIGTERM', () => { stopWatermark(); stopDocxWatermark(); process.exit(0); });
+
+// ---------- Word 图片导出 / 批量水印 sidecar（Flask + 标准库，仅抽取图片） ----------
+const DOCX_APP = path.join(ROOT, 'tools', 'docx-watermark', 'app.py');
+// 默认前缀与反向代理路径一致；生产环境可用环境变量覆盖
+const DOCX_BASE_PATH = process.env.DOCX_BASE_PATH || '/docx-watermark';
+const DOCX_PORT = parseInt(process.env.DOCX_PORT || '5002', 10);
+let docxChild = null;
+
+function resolveDocxPython() {
+  const cands = [
+    process.env.DOCX_PYTHON,
+    path.join(ROOT, 'tools', 'docx-watermark', '.venv', 'Scripts', 'python.exe'),
+    path.join(ROOT, 'tools', 'docx-watermark', '.venv', 'bin', 'python'),
+    path.join(ROOT, 'tools', 'watermark-remover', '.venv', 'Scripts', 'python.exe'), // 复用已装 Flask 的 venv
+    path.join(ROOT, 'tools', 'watermark-remover', '.venv', 'bin', 'python'),
+    'python3',
+    'python',
+  ].filter(Boolean);
+  for (const c of cands) {
+    try { if (fs.existsSync(c)) return c; } catch (_) {}
+  }
+  return null;
+}
+
+function startDocxWatermark() {
+  if (process.env.DOCX_ENABLED === '0') return;
+  if (!fs.existsSync(DOCX_APP)) return;
+  const py = resolveDocxPython();
+  if (!py) {
+    console.log('  [docx 水印] 未找到 Python 解释器，已跳过自动启动（前端将提示手动安装 Flask）');
+    return;
+  }
+  try {
+    docxChild = spawn(py, [DOCX_APP], {
+      env: { ...process.env, DOCX_PORT: String(DOCX_PORT), DOCX_BASE_PATH },
+      cwd: path.dirname(DOCX_APP),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    docxChild.stdout.on('data', () => {});
+    docxChild.stderr.on('data', (d) => {
+      const s = d.toString();
+      if (/Error|Traceback|Exception|critical/i.test(s)) console.error('  [docx 水印]', s.trim().split('\n')[0]);
+    });
+    docxChild.on('exit', (code) => {
+      console.log(`  [docx 水印] 子进程已退出 (code=${code})`);
+      docxChild = null;
+    });
+    console.log(`  Word 图片导出服务启动中 → http://127.0.0.1:${DOCX_PORT}  (python: ${py})`);
+  } catch (e) {
+    console.error('  [docx 水印] 启动失败：', e.message);
+  }
+}
+
+function stopDocxWatermark() {
+  if (docxChild) { try { docxChild.kill(); } catch (_) {} docxChild = null; }
+}
+
+function proxyDocx(req, res) {
+  const options = {
+    host: '127.0.0.1',
+    port: DOCX_PORT,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `127.0.0.1:${DOCX_PORT}` },
+  };
+  const proxyReq = http.request(options, (proxyRes) => {
+    const headers = { ...proxyRes.headers };
+    if (headers['transfer-encoding']) delete headers['transfer-encoding'];
+    res.writeHead(proxyRes.statusCode, headers);
+    proxyRes.pipe(res);
+  });
+  proxyReq.on('error', (e) => {
+    res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Word 图片导出服务暂时不可用（' + (e.code || e.message) + '），请确认后端已启动');
+  });
+  req.pipe(proxyReq);
+}
 
 // ---------- Router ----------
 const server = http.createServer((req, res) => {
@@ -577,6 +655,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (pathname === '/api/docx-status' && req.method === 'GET') {
+    const docxHealthPath = DOCX_BASE_PATH ? `${DOCX_BASE_PATH}/` : '/';
+    const req3 = http.get({ host: '127.0.0.1', port: DOCX_PORT, path: docxHealthPath, timeout: 1500 }, (r) => {
+      r.resume();
+      json(res, 200, { ok: r.statusCode < 400 });
+    });
+    req3.on('error', () => json(res, 200, { ok: false }));
+    req3.on('timeout', () => { req3.destroy(); json(res, 200, { ok: false }); });
+    return;
+  }
+
   // ---------- Auth ----------
   if (pathname === '/api/auth/register' && req.method === 'POST') return handleRegister(req, res);
   if (pathname === '/api/auth/login' && req.method === 'POST') return handleLogin(req, res);
@@ -592,6 +681,11 @@ const server = http.createServer((req, res) => {
     return proxyWatermark(req, res);
   }
 
+  // Word 图片导出 / 批量水印：同源路径经 Node 转发到内部 Flask（外部只暴露 4173，5002 不对外）
+  if (pathname === '/docx-watermark' || pathname.startsWith('/docx-watermark/')) {
+    return proxyDocx(req, res);
+  }
+
   if (pathname.startsWith('/api/')) return json(res, 404, { error: 'not found' });
   return serveStatic(req, res);
 });
@@ -599,4 +693,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`\n  个人工具箱已启动 → http://localhost:${PORT}\n  数据库：${DB_PATH}\n`);
   startWatermark();
+  startDocxWatermark();
 });

@@ -8,6 +8,7 @@
   // 去水印（Flask + OpenCV）sidecar 服务地址
   // 统一同源：/watermark-remover/ 由 Node 主服务反向代理到内部 Flask，外部只暴露 4173
   const WM_URL = (window.__WM_URL__) || '/watermark-remover/';
+  const DOCX_URL = (window.__DOCX_URL__) || '/docx-watermark/';
   const navLinks = Array.from(document.querySelectorAll('.nav__link'));
   const drawer = document.getElementById('drawer');
   const drawerBody = document.getElementById('drawerBody');
@@ -683,6 +684,46 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
+  /* ---------- Word 图片导出 / 批量水印 全屏工具（iframe 嵌入 Flask sidecar） ---------- */
+  async function renderDocxWatermark() {
+    view.innerHTML = `
+      <section class="section tool-fullpage">
+        <div class="section__head">
+          <div><h2 class="section__title">Word 图片导出 · 批量水印</h2><div class="section__sub">抽取 Word 内嵌图片，批量加自定义水印 · 本地运行</div></div>
+          <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
+        </div>
+        <div id="docx-box" class="wm-box">
+          <div class="wm-loading"><span class="spinner-sm"></span> 正在连接服务…</div>
+        </div>
+      </section>`;
+    bindReveal();
+    const box = document.getElementById('docx-box');
+    // 服务可能尚在启动，最多重试 4 次、间隔 ~700ms
+    let ok = false;
+    for (let i = 0; i < 4 && !ok; i++) {
+      try {
+        const r = await fetch('/api/docx-status');
+        const j = await r.json();
+        ok = !!j.ok;
+      } catch (_) { ok = false; }
+      if (!ok && i < 3) await new Promise((res) => setTimeout(res, 700));
+    }
+    if (ok) {
+      box.innerHTML = `<iframe class="wm-iframe" src="${esc(DOCX_URL)}?cb=${Date.now()}" title="Word 图片导出" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>`;
+    } else {
+      box.innerHTML = `
+        <div class="wm-error">
+          <h3>Word 图片导出服务未启动</h3>
+          <p>该工具依赖本地的 Python + Flask 服务（sidecar），当前未运行。请在本机执行以下命令安装依赖并启动：</p>
+          <pre class="wm-cmd">cd tools\\docx-watermark
+C:\\path\\to\\python -m venv .venv
+.venv\\Scripts\\pip install -r requirements.txt
+.venv\\Scripts\\python app.py</pre>
+          <p class="help">依赖就绪后，重启 Node 服务（<code>node --experimental-sqlite server/server.js</code>）即会自动拉起本工具。也可直接复用去水印工具的 venv（已含 Flask）。</p>
+        </div>`;
+    }
+  }
+
   /* ---------- Auth（登录 / 注册 Modal） ---------- */
   const authModal = document.getElementById('authModal');
   const authArea = document.getElementById('authArea');
@@ -1215,6 +1256,7 @@ C:\\path\\to\\python -m venv .venv
     const parts = hash.split('/').filter(Boolean);
     setActive(hash);
     if (parts[0] === 'tools' && parts[1] === 'watermark') return renderWatermark();
+    if (parts[0] === 'tools' && parts[1] === 'docx-watermark') return renderDocxWatermark();
     if (parts[0] === 'tools') return renderTools();
     if (parts[0] === 'blog' && parts[1]) return renderPost(parts[1]);
     if (parts[0] === 'blog') return renderBlog();
