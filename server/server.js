@@ -279,17 +279,24 @@ async function createSessionFor(res, req, userId) {
 // ---------- Auth handlers ----------
 async function handleRegister(req, res) {
   const b = await readJson(req);
-  const username = String(b.username || '').trim();
-  const password = String(b.password || '');
+  let username = String(b.username || '').trim();
+  let password = String(b.password || '');
   const email = b.email ? String(b.email).trim() : '';
   const phone = b.phone ? String(b.phone).trim() : '';
   const code = b.code ? String(b.code).trim() : '';
 
+  // 手机号+验证码一键注册：自动用手机号作为账号，验证码作为初始密码
+  const phoneOnly = !username && !password && phone && code;
+  if (phoneOnly) {
+    username = phone;
+    password = code;
+  }
+
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return json(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
-  if (password.length < 8) return json(res, 400, { error: '密码至少 8 位' });
+  if (phoneOnly ? password.length < 6 : password.length < 8) return json(res, 400, { error: phoneOnly ? '请输入 6 位验证码' : '密码至少 8 位' });
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: '邮箱格式不正确' });
   if (phone && !/^1[3-9]\d{9}$/.test(phone)) return json(res, 400, { error: '手机号格式不正确' });
-  if (!email && !phone) return json(res, 400, { error: '请至少提供邮箱或手机号之一' });
+  if (!phoneOnly && !email && !phone) return json(res, 400, { error: '请至少提供邮箱或手机号之一' });
 
   if (db.prepare('SELECT id FROM users WHERE username=?').get(username)) return json(res, 409, { error: '用户名已被占用' });
   if (email && db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res, 409, { error: '邮箱已被注册' });
@@ -446,7 +453,12 @@ function serveStatic(req, res) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     res.end(data);
   });
 }

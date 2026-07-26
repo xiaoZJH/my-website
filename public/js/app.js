@@ -34,7 +34,7 @@
     stats: [
       { num: '5+', label: '年经验' },
       { num: '30+', label: '个项目' },
-      { num: '12', label: '个工具' },
+      { num: '1', label: '个工具' },
     ],
     cards: [
       { title: '现在在做什么', text: '专注于前端工程化与本地优先工具，探索更优雅的人机交互。' },
@@ -690,7 +690,7 @@ C:\\path\\to\\python -m venv .venv
   const authError = document.getElementById('authError');
   const authHint = document.getElementById('authHint');
   const authSubmit = document.getElementById('authSubmit');
-  let authMode = 'login'; // login | login-code | register
+  let authMode = 'login'; // login | register
   let currentUser = null;
 
   /* ---------- Onboarding（进入网站） ---------- */
@@ -753,12 +753,16 @@ C:\\path\\to\\python -m venv .venv
   })();
 
   function openOnboard() {
-    if (!onboardModal) return;
-    onboardModal.classList.add('is-open');
-    onboardModal.setAttribute('aria-hidden', 'false');
+    if (authModal && authModal.classList.contains('is-open')) closeAuth();
+    var om = onboardModal || document.getElementById('onboardModal');
+    if (!om) return;
+    om.classList.add('is-open');
+    om.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-    if (onboardName) setTimeout(() => onboardName.focus(), 80);
+    var nm = onboardName || document.getElementById('onboardName');
+    if (nm) setTimeout(() => nm.focus(), 80);
   }
+  window.openOnboard = openOnboard;
   function closeOnboard() {
     if (!onboardModal || !onboardModal.classList.contains('is-open')) return;
     onboardModal.classList.remove('is-open');
@@ -799,98 +803,145 @@ C:\\path\\to\\python -m venv .venv
 
   const AUTH_FIELDS = {
     'login': ['identifier', 'password'],
-    'login-code': ['phone', 'code'],
-    'register': ['username', 'email', 'phone', 'code', 'password'],
+    'register': ['phone', 'code'],
   };
 
   function setAuthMode(mode) {
     if (!authForm) return;
     authMode = mode;
-    document.querySelectorAll('.auth-card__tab').forEach((t) => {
-      const isActive = t.dataset.authTab === (mode === 'login-code' ? 'login' : mode);
-      t.classList.toggle('is-active', isActive);
-      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    });
     authForm.querySelectorAll('.auth-card__field').forEach((f) => { f.hidden = !AUTH_FIELDS[mode].includes(f.dataset.field); });
     const title = document.getElementById('authTitle');
     if (title) {
-      if (mode === 'login') { title.textContent = '欢迎回来'; }
-      else if (mode === 'login-code') { title.textContent = '验证码登录'; }
-      else { title.textContent = '创建账户'; }
+      title.textContent = mode === 'register' ? '注册' : '登录';
     }
-    const sub = document.querySelector('.auth-card__subtitle');
-    if (sub) {
-      if (mode === 'login') sub.textContent = 'Welcome back';
-      else if (mode === 'login-code') sub.textContent = 'Login with SMS';
-      else sub.textContent = 'Create your account';
+    const headerText = document.getElementById('authHeaderText');
+    const headerLink = document.getElementById('authHeaderLink');
+    const authOptions = document.getElementById('authOptions');
+    if (headerText && headerLink) {
+      if (mode === 'register') {
+        headerText.textContent = '已有账号？';
+        headerLink.textContent = '点此登录';
+        headerLink.dataset.authMode = 'login';
+      } else {
+        headerText.textContent = '没有账号？';
+        headerLink.textContent = '点此注册';
+        headerLink.dataset.authMode = 'register';
+      }
     }
-    if (authSubmit) authSubmit.textContent = mode === 'register' ? '注 册' : (mode === 'login-code' ? '验证码登录' : '登 录');
-    if (authHint) authHint.textContent = mode === 'login-code' ? '输入手机号与收到的验证码即可登录' : (mode === 'register' ? '手机号可留空；填写后点"获取验证码"可绑定并验证手机号' : '');
+    if (authOptions) {
+      authOptions.hidden = (mode === 'register');
+    }
+    if (authSubmit) authSubmit.textContent = mode === 'register' ? '注 册' : '登 录';
+    if (authHint) authHint.textContent = '';
     authError.hidden = true;
+  }
+
+  /* ---------- 台灯多主题 ---------- */
+  const LAMP_THEMES = ['green', 'violet', 'blue', 'rose', 'amber', 'cyan'];
+  let lampThemeIndex = 0;
+  function applyLampTheme(name) {
+    if (!authModal) return;
+    LAMP_THEMES.forEach((t) => authModal.classList.remove('theme-' + t));
+    authModal.classList.add('theme-' + name);
+    lampThemeIndex = LAMP_THEMES.indexOf(name);
+  }
+  function nextLampTheme() {
+    lampThemeIndex = (lampThemeIndex + 1) % LAMP_THEMES.length;
+    applyLampTheme(LAMP_THEMES[lampThemeIndex]);
+  }
+  function randomLampTheme() {
+    let i = Math.floor(Math.random() * LAMP_THEMES.length);
+    if (i === lampThemeIndex) i = (i + 1) % LAMP_THEMES.length;
+    lampThemeIndex = i;
+    applyLampTheme(LAMP_THEMES[i]);
+  }
+
+  function setLampState(state) {
+    if (!authModal) return;
+    authModal.classList.remove('is-off', 'is-on', 'is-error', 'is-surprised');
+    if (state === 'off') authModal.classList.add('is-off');
+    else if (state === 'error') authModal.classList.add('is-on', 'is-error');
+    else if (state === 'surprised') authModal.classList.add('is-on', 'is-surprised');
+    else authModal.classList.add('is-on');
+  }
+
+  function hideAuthToast() {
+    const toast = document.getElementById('authToast');
+    if (toast) { toast.classList.remove('is-visible'); toast.hidden = true; }
+  }
+  function showAuthToast(msg) {
+    const toast = document.getElementById('authToast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.hidden = false;
+    requestAnimationFrame(() => toast.classList.add('is-visible'));
+    setTimeout(() => hideAuthToast(), 3200);
   }
 
   function openAuth(mode) {
     setAuthMode(mode || 'login');
+    if (onboardModal && onboardModal.classList.contains('is-open')) closeOnboard();
     if (!authModal) return;
-    authModal.classList.add('is-open', 'is-green');
+    authModal.classList.add('is-open');
+    applyLampTheme(LAMP_THEMES[0]); // 初始绿色，开灯时再随机
+    setLampState('off');
     authModal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
-    startLampCycle();
-    const first = authForm?.querySelector('.auth-card__field:not([hidden]) input');
-    if (first) setTimeout(() => first.focus(), 80);
+    hideAuthToast();
+    const lamp = document.getElementById('authLamp');
+    if (lamp) { lamp.classList.remove('is-sad', 'is-surprised'); }
   }
+  window.openAuth = openAuth;
   function closeAuth() {
     if (!authModal || !authModal.classList.contains('is-open')) return;
     authModal.classList.remove('is-open');
     authModal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
-    stopLampCycle();
     try { authForm?.reset(); } catch (_) {}
     authError.hidden = true;
-  }
-
-  const LAMP_COLORS = ['is-green', 'is-orange', 'is-red', 'is-cyan'];
-  let lampCycleTimer = null;
-  function startLampCycle() {
-    stopLampCycle();
-    if (!authModal) return;
-    LAMP_COLORS.forEach((c) => authModal.classList.remove(c));
-    authModal.classList.add('is-green');
-    let i = 0;
-    lampCycleTimer = setInterval(() => {
-      if (!authModal) return;
-      authModal.classList.remove(LAMP_COLORS[i]);
-      i = (i + 1) % LAMP_COLORS.length;
-      authModal.classList.add(LAMP_COLORS[i]);
-    }, 5200);
-  }
-  function stopLampCycle() {
-    if (lampCycleTimer) { clearInterval(lampCycleTimer); lampCycleTimer = null; }
+    hideAuthToast();
+    setTimeout(() => setLampState('off'), 200);
   }
 
   function showAuthError(msg) {
     authError.textContent = msg;
-    authError.hidden = false;
-    const card = document.querySelector('.auth-card');
+    authError.hidden = true;
+    setLampState('error');
+    const lamp = document.getElementById('authLamp');
+    if (lamp) {
+      lamp.classList.remove('is-sad', 'is-surprised', 'is-peek');
+      lamp.classList.add('is-sad');
+      setTimeout(() => lamp.classList.remove('is-sad'), 900);
+    }
+    const card = document.getElementById('authCard');
     if (card && !card.classList.contains('is-success')) {
       card.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }], { duration: 320, easing: 'ease-in-out' });
     }
-    const lamp = document.getElementById('authLamp');
-    if (lamp) { lamp.classList.add('is-sad'); setTimeout(() => lamp.classList.remove('is-sad'), 1200); }
+    // 给当前可见输入框加红脉冲反馈
+    if (authForm) {
+      authForm.querySelectorAll('.auth-card__field:not([hidden]) input').forEach((inp) => {
+        inp.classList.remove('is-error-pulse');
+        void inp.offsetWidth; // 重置动画
+        inp.classList.add('is-error-pulse');
+        setTimeout(() => inp.classList.remove('is-error-pulse'), 650);
+      });
+    }
+    showAuthToast(msg);
   }
 
   function renderAuthArea() {
     const landingAuth = document.getElementById('landingAuth');
+    const signinOnclick = 'onclick="try{openAuth(\'login\');}catch(_){var m=document.getElementById(\'authModal\');if(m){m.classList.add(\'is-open\');m.setAttribute(\'aria-hidden\',\'false\');}}return false;"';
     if (landingAuth) {
       if (currentUser) {
         const name = aesc(currentUser.display_name || currentUser.username);
         landingAuth.innerHTML =
           '<span class="landing__user">' + name + '</span>' +
           '<button class="landing__top-btn" id="landingLogout" type="button">Log off</button>' +
-          '<button class="landing__top-btn is-ghost" id="landingSignin" type="button" hidden>Sign in</button>';
+          '<button class="landing__top-btn is-ghost" id="landingSignin" type="button" hidden ' + signinOnclick + '>Sign in</button>';
       } else {
         landingAuth.innerHTML =
-          '<button class="landing__top-btn" id="landingSignin" type="button">Sign in</button>' +
+          '<button class="landing__top-btn" id="landingSignin" type="button" ' + signinOnclick + '>Sign in</button>' +
           '<button class="landing__top-btn is-ghost" id="landingLogout" type="button" disabled>Log off</button>';
       }
     }
@@ -933,15 +984,13 @@ C:\\path\\to\\python -m venv .venv
     let res;
     if (authMode === 'login') {
       res = await api('/api/auth/login', { identifier: v('identifier'), password: v('password') });
-    } else if (authMode === 'login-code') {
-      res = await api('/api/auth/login-code', { phone: v('phone'), code: v('code') });
     } else {
-      res = await api('/api/auth/register', { username: v('username'), email: v('email'), phone: v('phone'), code: v('code'), password: v('password') });
+      res = await api('/api/auth/register', { phone: v('phone'), code: v('code') });
     }
     if (res.ok && res.data.user) {
       currentUser = res.data.user;
       renderAuthArea();
-      const card = document.querySelector('.auth-card');
+      const card = document.getElementById('authCard');
       if (card) {
         card.classList.add('is-success');
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -954,18 +1003,29 @@ C:\\path\\to\\python -m venv .venv
     }
   });
 
+  // 输入时从错误态恢复为绿灯
+  authForm?.addEventListener('input', () => {
+    if (authModal && authModal.classList.contains('is-error')) {
+      setLampState('on');
+      hideAuthToast();
+      authError.hidden = true;
+      const lamp = document.getElementById('authLamp');
+      if (lamp) lamp.classList.remove('is-sad');
+    }
+  });
+
   const authSendBtn = document.querySelector('[data-auth-send]');
   if (authSendBtn) authSendBtn.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const phone = (new FormData(authForm).get('phone') || '').toString().trim();
     if (!/^1[3-9]\d{9}$/.test(phone)) { showAuthError('请先填写正确的 11 位手机号'); return; }
-    const purpose = authMode === 'login-code' ? 'login' : 'register';
+    const purpose = authMode === 'register' ? 'register' : 'login';
     btn.disabled = true;
     const res = await api('/api/auth/send-code', { phone, purpose });
     btn.disabled = false;
     if (res.ok) {
       const dev = res.data.devCode ? ('（开发态验证码：' + res.data.devCode + '）') : '';
-      authHint.textContent = '验证码已发送，请查收' + dev;
+      showAuthToast('验证码已发送，请查收' + dev);
       authError.hidden = true;
     } else {
       showAuthError((res.data && res.data.error) || '发送失败');
@@ -1022,6 +1082,82 @@ C:\\path\\to\\python -m venv .venv
     }
   });
 
+  /* ---------- 台灯交互：拖拽灯绳 + 切换 + 偷看表情 ---------- */
+  function toggleLamp() {
+    if (!authModal) return;
+    const lamp = document.getElementById('authLamp');
+    if (lamp) { lamp.classList.add('is-pulled'); setTimeout(() => lamp.classList.remove('is-pulled'), 350); }
+    const isOff = authModal.classList.contains('is-off');
+    if (isOff) {
+      randomLampTheme();           // 每次开灯随机一个主题色
+      setLampState('on');
+      hideAuthToast();
+      const first = authForm?.querySelector('.auth-card__field:not([hidden]) input');
+      if (first) setTimeout(() => first.focus(), 140);
+    } else {
+      setLampState('off');
+      hideAuthToast();
+      const lamp2 = document.getElementById('authLamp');
+      if (lamp2) lamp2.classList.remove('is-peek');
+    }
+  }
+
+  function initLampDrag() {
+    if (!authModal) return;
+    const knob = authModal.querySelector('.lamp__pull-svgknob');
+    const line = authModal.querySelector('.lamp__pull-svgline');
+    if (!knob) return;
+    const MAX_PULL = 64;
+    let dragging = false, startY = 0, curY = 0, moved = false;
+    const move = (y) => {
+      curY = Math.max(0, Math.min(MAX_PULL, y - startY));
+      if (Math.abs(curY) > 3) moved = true;
+      knob.style.transform = 'translateY(' + curY + 'px)';
+      if (line) line.style.transform = 'translateY(' + curY + 'px)';
+    };
+    knob.addEventListener('pointerdown', (e) => {
+      if (!authModal.classList.contains('is-open')) return;
+      dragging = true; moved = false; startY = e.clientY; curY = 0;
+      knob.classList.add('is-dragging');
+      if (line) line.classList.add('is-dragging');
+      try { knob.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    knob.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      move(e.clientY);
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      knob.classList.remove('is-dragging');
+      if (line) line.classList.remove('is-dragging');
+      knob.style.transform = '';
+      if (line) line.style.transform = '';
+      // 下拖超过阈值，或只是轻点一下都视为切换
+      if (moved ? curY > MAX_PULL * 0.45 : true) toggleLamp();
+    };
+    knob.addEventListener('pointerup', end);
+    knob.addEventListener('pointercancel', end);
+  }
+
+  function initLampPeek() {
+    if (!authForm) return;
+    authForm.addEventListener('focusin', () => {
+      const lamp = document.getElementById('authLamp');
+      if (lamp && authModal && authModal.classList.contains('is-on') && !authModal.classList.contains('is-error')) {
+        lamp.classList.add('is-peek');
+      }
+    });
+    authForm.addEventListener('focusout', () => {
+      const lamp = document.getElementById('authLamp');
+      if (lamp) lamp.classList.remove('is-peek');
+    });
+  }
+
+  initLampDrag();
+  initLampPeek();
+
   document.addEventListener('click', (e) => {
     if (e.target.closest('#authLoginBtn') || e.target.closest('#landingSignin')) { openAuth('login'); return; }
     const avatarBtn = e.target.closest('[data-avatar]');
@@ -1041,16 +1177,8 @@ C:\\path\\to\\python -m venv .venv
     }
     const obClose = e.target.closest('[data-onboard-close]');
     if (obClose) { closeOnboard(); return; }
-    if (e.target.closest('#lampPull')) {
-      if (!authModal) return;
-      const cur = LAMP_COLORS.find((c) => authModal.classList.contains(c)) || LAMP_COLORS[0];
-      const next = LAMP_COLORS[(LAMP_COLORS.indexOf(cur) + 1) % LAMP_COLORS.length];
-      authModal.classList.remove(cur); authModal.classList.add(next);
-      const lamp = document.getElementById('authLamp');
-      if (lamp) { lamp.classList.add('is-pulled'); setTimeout(() => lamp.classList.remove('is-pulled'), 350); }
-      stopLampCycle(); startLampCycle();
-      return;
-    }
+    if (e.target.closest('#lampPull')) { toggleLamp(); return; }
+    if (e.target.closest('#lampThemeBtn')) { nextLampTheme(); return; }
     if (e.target.closest('#authLogout') || e.target.closest('#landingLogout')) {
       if (!currentUser) { showAuthError('当前未登录'); return; }
       api('/api/auth/logout').then(() => {
@@ -1062,14 +1190,18 @@ C:\\path\\to\\python -m venv .venv
       return;
     }
     const tab = e.target.closest('[data-auth-tab]');
-    if (tab) { setAuthMode(tab.dataset.authTab); return; }
+    if (tab) { setAuthMode(tab.dataset.authTab); setLampState('on'); hideAuthToast(); return; }
     const modeLink = e.target.closest('[data-auth-mode]');
     if (modeLink) {
       if (modeLink.dataset.authMode === 'forgot') {
-        authHint.textContent = '请联系管理员重置密码';
+        showAuthToast('请联系管理员重置密码');
         return;
       }
       setAuthMode(modeLink.dataset.authMode);
+      setLampState('on');
+      const lamp = document.getElementById('authLamp');
+      if (lamp) lamp.classList.remove('is-peek');
+      hideAuthToast();
       return;
     }
     const close = e.target.closest('[data-auth-close]');

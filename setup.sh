@@ -6,7 +6,7 @@ set -e
 # 前置要求：root 用户 + 能访问 GitHub
 # ============================================================
 
-REPO="https://github.com/xiaoZJH/my-website.git"
+REPO="https://gitee.com/Python-Z/my-website.git"
 APP_DIR="/opt/toolbox-website"
 APP_USER="root"
 NODE_VERSION="22"

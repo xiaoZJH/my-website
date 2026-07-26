@@ -391,11 +391,36 @@ img { max-width: 100%; display: block; }
 .auth-modal.is-open { display: block; }
 .auth-modal__scrim {
   position: absolute; inset: 0;
-  background: rgba(5, 8, 14, .82);
-  backdrop-filter: blur(8px);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(30, 40, 55, .55) 0%, rgba(5, 8, 14, .92) 70%),
+    #05080e;
+  backdrop-filter: blur(10px);
   animation: authScrimIn .35s var(--ease) forwards;
 }
 @keyframes authScrimIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 顶部错误提示 */
+.auth-modal__toast {
+  position: absolute; top: 28px; left: 50%; z-index: 11;
+  transform: translateX(-50%) translateY(-20px);
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 11px 20px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: .88rem; font-weight: 600; color: #fff;
+  background: rgba(30, 16, 10, .82);
+  border: 1px solid rgba(251, 146, 60, .45);
+  box-shadow: 0 12px 40px -10px rgba(251, 146, 60, .35), 0 0 0 1px rgba(0,0,0,.2) inset;
+  backdrop-filter: blur(14px);
+  opacity: 0; pointer-events: none;
+  transition: opacity .35s var(--ease), transform .35s var(--ease);
+}
+.auth-modal__toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.auth-modal__toast::before {
+  content: '!'; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: .8rem; font-weight: 800;
+  background: rgba(251, 146, 60, .9); color: #1a0b00;
+}
+
 .auth-modal__stage {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6vw;
   padding: 24px;
@@ -414,139 +439,275 @@ img { max-width: 100%; display: block; }
 }
 .auth-modal__close:hover { color: #fff; transform: rotate(90deg); background: rgba(255,255,255,.12); }
 
-/* 台灯 */
+/* 台灯多主题色板：开灯时随机/循环切换 */
+.auth-modal.theme-green  { --lamp-color: #a3e635; --lamp-light: #d9f99d; --lamp-dark: #65a30d; }
+.auth-modal.theme-violet { --lamp-color: #a78bfa; --lamp-light: #ddd6fe; --lamp-dark: #7c3aed; }
+.auth-modal.theme-blue   { --lamp-color: #38bdf8; --lamp-light: #bae6fd; --lamp-dark: #0284c7; }
+.auth-modal.theme-rose   { --lamp-color: #fb7185; --lamp-light: #fecdd3; --lamp-dark: #e11d48; }
+.auth-modal.theme-amber  { --lamp-color: #fbbf24; --lamp-light: #fde68a; --lamp-dark: #d97706; }
+.auth-modal.theme-cyan   { --lamp-color: #22d3ee; --lamp-light: #a5f3fc; --lamp-dark: #0891b2; }
+.auth-modal.is-off    { --lamp-color: #94a3b8; --lamp-light: #cbd5e1; --lamp-dark: #475569; }
+/* 错误态强制琥珀色，保证警示语义 */
+.auth-modal.is-error  { --lamp-color: #fb923c; --lamp-light: #fed7aa; --lamp-dark: #c2410c; }
+
+/* 台灯 —— 保持位置稳定，不做整体摆动/位移 */
 .lamp {
-  position: relative; width: min(34vw, 260px); height: min(46vw, 360px);
+  position: relative; width: min(34vw, 280px); height: min(48vw, 400px);
   display: flex; flex-direction: column; align-items: center;
-  transform-origin: 50% 0;
-  animation: lampSwing 4s ease-in-out infinite;
+  transform: translateZ(0);
+  will-change: transform;
 }
-@keyframes lampSwing { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
 .lamp__svg { width: 100%; height: 100%; overflow: visible; }
-.lamp__cord-line { stroke: rgba(255,255,255,.35); stroke-width: 3; }
+.lamp__mount { fill: rgba(255,255,255,.15); }
+.lamp__cord-line { stroke: rgba(255,255,255,.28); stroke-width: 3; }
 .lamp__shade-shape {
-  filter: drop-shadow(0 8px 18px rgba(0,0,0,.45));
-  transition: filter .35s ease;
+  filter: url(#shadeShadow);
+  transition: fill .5s var(--ease), filter .35s ease;
 }
-.lamp__bulb { opacity: .85; transition: opacity .4s ease; }
-.lamp__beam-svg { opacity: .55; transition: opacity .4s ease; }
-.lamp__pull-svgline { stroke: rgba(255,255,255,.5); stroke-width: 2; }
-.lamp__pull-svgknob { fill: rgba(255,255,255,.9); stroke: rgba(255,255,255,.3); stroke-width: 1; }
-.lamp__face { color: rgba(8,24,28,.85); transition: color .35s ease; }
-.lamp__mouth { transition: d .35s ease; }
+.lamp__bulb { opacity: .9; transition: opacity .5s var(--ease); }
+.lamp__beam-svg { opacity: .6; transition: opacity .5s var(--ease); }
+.lamp__pull-svgline { stroke: rgba(255,255,255,.45); stroke-width: 2; transition: stroke .3s, transform .3s var(--ease); transform-origin: 156px 128px; }
+.lamp__pull-svgknob { fill: rgba(255,255,255,.88); stroke: rgba(255,255,255,.25); stroke-width: 1; transition: fill .3s, transform .3s var(--ease); transform-origin: 156px 128px; }
+.lamp__face { color: rgba(8,24,28,.82); opacity: 0; transition: opacity .35s ease; }
+.lamp__eye { fill: currentColor; }
+.lamp__eye-line { stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+
+/* 拉绳被拉下动画 —— 只动画拉绳本身，不移动整盏灯 */
+.lamp.is-pulled .lamp__pull-svgline,
+.lamp.is-pulled .lamp__pull-svgknob { animation: pullString .35s var(--ease); }
+@keyframes pullString { 0%,100% { transform: translateY(0); } 50% { transform: translateY(18px); } }
+
+/* 拖拽时实时跟随、松手平滑回弹（均只作用于拉绳，不动整盏灯） */
+.lamp__pull-svgline,
+.lamp__pull-svgknob { transition: transform .3s var(--ease); }
+.lamp__pull-svgline.is-dragging,
+.lamp__pull-svgknob.is-dragging { transition: none; }
+
+/* 拉绳头可拖拽光标 */
+.lamp__pull-svgknob { cursor: grab; touch-action: none; }
+.lamp__pull-svgknob:active { cursor: grabbing; }
+
+/* 拉绳按钮 */
 .lamp__pull {
-  position: absolute; bottom: -28px; left: 62%;
+  position: absolute; bottom: -30px; left: 71%;
   transform: translateX(-50%);
   background: transparent; border: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
-  color: rgba(255,255,255,.45); font-size: .72rem; letter-spacing: .08em;
+  color: rgba(255,255,255,.42); font-size: .72rem; letter-spacing: .08em;
   transition: color .2s;
 }
-.lamp__pull:hover { color: rgba(255,255,255,.75); }
+.lamp__pull:hover { color: rgba(255,255,255,.78); }
 .lamp__pull-text { text-shadow: 0 1px 4px rgba(0,0,0,.5); }
 
-/* 台灯颜色主题 */
-.auth-modal.is-green  { --lamp-color: #a3e635; --lamp-light: #d9f99d; --lamp-dark: #65a30d; }
-.auth-modal.is-orange { --lamp-color: #fb923c; --lamp-light: #fed7aa; --lamp-dark: #c2410c; }
-.auth-modal.is-red    { --lamp-color: #f87171; --lamp-light: #fecaca; --lamp-dark: #b91c1c; }
-.auth-modal.is-cyan   { --lamp-color: #22d3ee; --lamp-light: #a5f3fc; --lamp-dark: #0891b2; }
+/* 换肤小按钮：放在台灯右上角，独立元素不影响台灯位置 */
+.lamp__theme {
+  position: absolute; top: 6%; right: 2%;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14);
+  transition: transform .3s var(--ease), border-color .2s, background .2s;
+}
+.lamp__theme:hover { transform: rotate(35deg); border-color: var(--lamp-color); background: rgba(255,255,255,.12); }
+.lamp__theme-ring {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: conic-gradient(from 0deg, #a3e635, #22d3ee, #38bdf8, #a78bfa, #fb7185, #fbbf24, #a3e635);
+  box-shadow: 0 0 8px -2px var(--lamp-color);
+}
 
-/* 拉绳被拉下动画 */
-.lamp.is-pulled { animation: lampPull .35s var(--ease); }
-@keyframes lampPull { 0% { transform: rotate(0deg) translateY(0); } 50% { transform: rotate(0deg) translateY(14px); } 100% { transform: rotate(0deg) translateY(0); } }
+/* 地面光池 */
+.lamp__pool {
+  opacity: 0; transition: opacity .6s var(--ease);
+  pointer-events: none;
+}
+.auth-modal.is-on .lamp__pool,
+.auth-modal.is-error .lamp__pool { opacity: 1; }
 
-/* 错误态：台灯难过脸 */
-.lamp.is-sad .lamp__mouth { d: path('M96 122 Q110 114 124 122'); }
-.lamp.is-sad .lamp__face { color: rgba(40,10,10,.9); }
-.lamp.is-sad { animation: lampSad .45s ease-in-out; }
-@keyframes lampSad { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+/* 开灯状态 */
+.auth-modal.is-on .lamp__face--happy { opacity: 1; }
+.auth-modal.is-on .lamp__bulb { opacity: .95; }
+.auth-modal.is-on .lamp__beam-svg { opacity: .62; }
+/* 用户聚焦输入框 → 偷看表情（优先级低于错误态） */
+.lamp.is-peek .lamp__face--happy { opacity: 0; }
+.lamp.is-peek .lamp__face--peek { opacity: 1; }
+.lamp.is-peek .lamp__bulb { opacity: 1; }
 
-/* 登录卡片 */
+/* 关灯状态 */
+.auth-modal.is-off .lamp__face--sleep { opacity: 1; }
+.auth-modal.is-off .lamp__bulb { opacity: .22; }
+.auth-modal.is-off .lamp__beam-svg { opacity: .14; }
+.auth-modal.is-off .lamp__shade-shape { filter: url(#shadeShadow) brightness(.55) saturate(.25); }
+.auth-modal.is-off .lamp__pull-svgline { stroke: rgba(255,255,255,.28); }
+.auth-modal.is-off .lamp__pull-svgknob { fill: rgba(255,255,255,.55); }
+
+/* 错误态：台灯难过脸（只做表情切换，不移动整盏灯） */
+.auth-modal.is-error .lamp__face--sad { opacity: 1; }
+.auth-modal.is-error .lamp__bulb { opacity: .85; }
+.auth-modal.is-error .lamp__beam-svg { opacity: .45; }
+
+/* 惊讶态（只做表情切换） */
+.auth-modal.is-surprised .lamp__face--surprised { opacity: 1; }
+
+/* 登录卡片 —— Gitee 风格独立白卡 */
+.auth-card-slot {
+  width: min(420px, calc(100vw - 40px));
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none;
+}
 .auth-card {
-  position: relative; width: min(420px, calc(100vw - 40px));
-  border-radius: 26px; overflow: hidden;
-  color: #fff;
-  background: rgba(20, 24, 32, .62);
-  border: 1px solid rgba(255,255,255,.08);
+  position: relative; width: 100%;
+  border-radius: 18px; overflow: hidden;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.06);
   box-shadow:
-    0 30px 90px -25px rgba(0,0,0,.65),
-    0 0 0 1px rgba(255,255,255,.04) inset;
-  backdrop-filter: blur(26px) saturate(150%);
-  animation: authCardIn .65s var(--ease) .1s backwards;
+    0 24px 70px -18px rgba(0,0,0,.45),
+    0 0 0 1px rgba(0,0,0,.02) inset;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateY(24px) scale(.96);
+  transition: opacity .55s var(--ease), transform .55s var(--ease), visibility .55s var(--ease), box-shadow .55s var(--ease);
 }
-@keyframes authCardIn {
-  from { opacity: 0; transform: translateX(40px); }
-  to { opacity: 1; transform: translateX(0); }
+.auth-modal.is-on .auth-card,
+.auth-modal.is-error .auth-card {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translateY(0) scale(1);
 }
-.auth-card__glow {
-  position: absolute; inset: -1px; border-radius: 26px; pointer-events: none;
-  box-shadow: 0 0 70px -16px var(--lamp-color), 0 0 0 1px var(--lamp-color) inset;
-  opacity: .55; transition: opacity .4s ease;
+.auth-modal.is-error .auth-card {
+  box-shadow:
+    0 24px 70px -18px rgba(0,0,0,.45),
+    0 0 0 1px rgba(251, 146, 60, .45),
+    0 0 40px -10px rgba(251, 146, 60, .25);
 }
-.auth-card:hover .auth-card__glow { opacity: .75; }
-.auth-card__inner { position: relative; z-index: 2; padding: 32px; }
-.auth-card__title { font-family: var(--font-display); font-size: 1.7rem; font-weight: 800; margin: 0; letter-spacing: -.01em; }
-.auth-card__subtitle { font-size: .85rem; color: rgba(255,255,255,.45); margin: 4px 0 var(--sp-5); letter-spacing: .04em; }
+.auth-modal.is-on .auth-card-slot,
+.auth-modal.is-error .auth-card-slot { pointer-events: auto; }
 .auth-card.is-success { animation: cardSuccess .5s var(--ease) forwards; }
 @keyframes cardSuccess {
-  0% { box-shadow: 0 30px 90px -25px rgba(0,0,0,.65); }
-  40% { transform: scale(1.02); box-shadow: 0 0 80px -10px var(--lamp-color), 0 30px 90px -25px rgba(0,0,0,.65); }
+  0% { transform: scale(1); }
+  40% { transform: scale(1.02); }
   100% { transform: scale(1); opacity: 0; }
 }
-
-.auth-card__tabs { display: flex; gap: 6px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 4px; margin-bottom: var(--sp-5); }
-.auth-card__tab {
-  flex: 1; appearance: none; border: none; background: transparent; color: rgba(255,255,255,.55); font-family: var(--font-body); font-weight: 600; font-size: .88rem; padding: 9px 12px; border-radius: 999px; cursor: pointer; transition: background .25s var(--ease), color .25s var(--ease);
+.auth-card__inner { position: relative; z-index: 2; padding: 34px; }
+.auth-card__header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 28px;
 }
-.auth-card__tab:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.85); }
-.auth-card__tab.is-active { color: #04121a; background: linear-gradient(135deg, var(--lamp-color), var(--lamp-light)); box-shadow: 0 4px 16px -5px var(--lamp-color); }
+.auth-card__title { font-family: var(--font-display); font-size: 1.7rem; font-weight: 800; margin: 0; color: #111827; letter-spacing: -.01em; }
+.auth-card__header-link { font-size: .88rem; color: #6b7280; }
+.auth-card__header-link .auth-card__link { font-size: .88rem; }
 
-.auth-card__form { display: flex; flex-direction: column; gap: 14px; }
+.auth-card__form { display: flex; flex-direction: column; gap: 16px; }
 .auth-card__field { display: flex; flex-direction: column; gap: 6px; }
-.auth-card__field label { font-size: .78rem; color: rgba(255,255,255,.55); font-weight: 600; letter-spacing: .03em; }
+.auth-card__field[hidden] { display: none !important; }
 .auth-card__field input {
   appearance: none; width: 100%;
-  padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.28); color: #fff;
+  padding: 12px 14px; border-radius: 10px; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #1f2937;
   font-family: var(--font-body); font-size: .95rem;
   outline: none; transition: border-color .2s var(--ease), background .2s var(--ease), box-shadow .2s var(--ease);
 }
-.auth-card__field input::placeholder { color: rgba(255,255,255,.32); }
-.auth-card__field input:focus { border-color: var(--lamp-color); background: rgba(0,0,0,.42); box-shadow: 0 0 0 4px rgba(163,230,53,.18); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lamp-color) 18%, transparent); }
+.auth-card__field input::placeholder { color: #9ca3af; }
+.auth-card__field input:focus { border-color: var(--lamp-color); background: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--lamp-color) 18%, transparent); }
+.auth-card__field input.is-error-pulse { animation: inputPulse .6s var(--ease); border-color: #ef4444 !important; }
+@keyframes inputPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239,68,68,.55); }
+  100% { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-card__field input.is-error-pulse { animation: none; }
+}
 .auth-card__code-row { display: flex; gap: 10px; }
 .auth-card__code-row input { flex: 1; }
 .auth-card__code-btn {
-  flex-shrink: 0; appearance: none; border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.08); color: rgba(255,255,255,.85); font-family: var(--font-body); font-weight: 600; font-size: .85rem;
-  padding: 0 14px; border-radius: 14px; cursor: pointer; white-space: nowrap;
+  flex-shrink: 0; appearance: none; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #374151; font-family: var(--font-body); font-weight: 600; font-size: .85rem;
+  padding: 0 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
   transition: background .2s var(--ease), border-color .2s var(--ease), color .2s var(--ease);
 }
-.auth-card__code-btn:hover:not(:disabled) { background: rgba(255,255,255,.18); border-color: var(--lamp-color); color: #fff; }
-.auth-card__code-btn:disabled { opacity: .45; cursor: not-allowed; }
-.auth-card__error { font-size: .85rem; color: #ffb4b4; background: rgba(255,90,90,.12); border: 1px solid rgba(255,90,90,.3); border-radius: 10px; padding: 9px 12px; }
+.auth-card__code-btn:hover:not(:disabled) { background: #f3f4f6; border-color: var(--lamp-color); color: #111827; }
+.auth-card__code-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.auth-card__options {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: .86rem;
+}
+.auth-card__remember {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; color: #4b5563; user-select: none;
+}
+.auth-card__remember input[type="checkbox"] {
+  appearance: none; width: 16px; height: 16px; border-radius: 4px; border: 1px solid #d1d5db;
+  background: #fff; cursor: pointer; position: relative; transition: border-color .2s, background .2s;
+}
+.auth-card__remember input[type="checkbox"]:checked {
+  background: var(--lamp-color); border-color: var(--lamp-color);
+}
+.auth-card__remember input[type="checkbox"]:checked::after {
+  content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px;
+  border: solid #1f2937; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.auth-card__error {
+  font-size: .85rem; color: #ef4444; background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: 10px; padding: 9px 12px;
+}
 .auth-card__submit {
   appearance: none; border: none; width: 100%;
-  padding: 14px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--lamp-color), var(--lamp-light)); color: #04121a;
+  padding: 13px; border-radius: 10px;
+  background: linear-gradient(135deg, #a3e635, #d9f99d); color: #1f2937;
   font-family: var(--font-display); font-weight: 800; font-size: 1rem; letter-spacing: .04em;
-  cursor: pointer; box-shadow: 0 8px 28px -8px var(--lamp-color);
+  cursor: pointer; box-shadow: 0 8px 24px -8px rgba(101, 163, 13, .45);
   transition: transform .25s var(--ease), box-shadow .25s var(--ease), filter .25s var(--ease);
 }
-.auth-card__submit:hover { transform: translateY(-2px); box-shadow: 0 14px 36px -10px var(--lamp-color); filter: brightness(1.05); }
+.auth-card__submit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px -10px rgba(101, 163, 13, .55); filter: brightness(1.05); }
 .auth-card__submit:active { transform: translateY(0); }
-.auth-card__hint { font-size: .78rem; color: rgba(255,255,255,.45); text-align: center; min-height: 1em; margin-top: 2px; }
-.auth-card__alt { margin-top: var(--sp-5); display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
-.auth-card__dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.25); }
-.auth-card__link {
-  appearance: none; border: none; background: transparent; color: rgba(255,255,255,.55); font-family: var(--font-body); font-size: .85rem; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,.18); transition: color .2s, text-decoration-color .2s;
+
+.auth-card__footer {
+  margin-top: 16px; text-align: center;
 }
-.auth-card__link:hover { color: #fff; text-decoration-color: var(--lamp-color); }
+.auth-card__footer .auth-card__link { font-size: .86rem; }
+
+.auth-card__divider {
+  margin: 22px 0 16px; position: relative; text-align: center;
+}
+.auth-card__divider::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #e5e7eb;
+}
+.auth-card__divider span {
+  position: relative; z-index: 1; display: inline-block; padding: 0 12px;
+  background: #fff; font-size: .8rem; color: #9ca3af;
+}
+
+.auth-card__social {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+}
+.auth-card__social button {
+  width: 38px; height: 38px; border-radius: 50%; border: 1px solid #e5e7eb;
+  background: #fff; color: #6b7280; cursor: pointer;
+  display: grid; place-items: center;
+  transition: border-color .2s, color .2s, transform .2s, box-shadow .2s;
+}
+.auth-card__social button:hover {
+  border-color: var(--lamp-color); color: #65a30d; transform: translateY(-2px);
+  box-shadow: 0 6px 16px -6px rgba(101, 163, 13, .25);
+}
+
+.auth-card__link {
+  appearance: none; border: none; background: transparent; color: #65a30d; font-family: var(--font-body); font-weight: 600; cursor: pointer;
+  text-decoration: none; transition: color .2s;
+}
+.auth-card__link:hover { color: #4d7c0f; text-decoration: underline; }
 
 @media (max-width: 900px) {
-  .auth-modal__stage { flex-direction: column; gap: 24px; padding-top: 60px; overflow-y: auto; align-items: center; }
-  .lamp { width: min(52vw, 200px); height: min(70vw, 270px); }
-  .auth-card { width: min(420px, calc(100vw - 32px)); }
-  .auth-card__inner { padding: 24px; }
+  .auth-modal__stage { flex-direction: column; gap: 18px; padding-top: 70px; overflow-y: auto; align-items: center; }
+  .auth-modal__toast { top: 18px; }
+  .lamp { width: min(46vw, 190px); height: min(64vw, 260px); }
+  .auth-card-slot { width: min(420px, calc(100vw - 32px)); display: none; }
+  .auth-modal.is-on .auth-card-slot,
+  .auth-modal.is-error .auth-card-slot { display: flex; }
+  .auth-card {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transform: none; transition: none;
+  }
+  .auth-card__inner { padding: 26px; }
 }
 @media (max-width: 480px) {
   .landing__topbar { padding: 14px 16px; }
@@ -558,24 +719,20 @@ img { max-width: 100%; display: block; }
 }
 
 /* ---------- Onboarding Modal：卡通角色 + 身份卡片 ---------- */
-.onboard-modal { position: fixed; inset: 0; z-index: 210; display: none; }
-.onboard-modal.is-open { display: block; }
+.onboard-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 210; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity .3s var(--ease), visibility .3s var(--ease); }
+.onboard-modal.is-open { visibility: visible; opacity: 1; pointer-events: auto; }
 .onboard-modal__scrim {
   position: absolute; inset: 0;
   background: rgba(12, 14, 28, .88);
   backdrop-filter: blur(14px);
-  animation: obScrimIn .35s var(--ease) forwards;
 }
-@keyframes obScrimIn { from { opacity: 0; } to { opacity: 1; } }
 .onboard-modal__stage {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 0;
   padding: 20px;
-  animation: obStageIn .55s var(--ease) forwards;
+  opacity: 0; transform: scale(.96) translateY(20px);
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
 }
-@keyframes obStageIn {
-  from { opacity: 0; transform: scale(.96) translateY(20px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
+.onboard-modal.is-open .onboard-modal__stage { opacity: 1; transform: scale(1) translateY(0); }
 .onboard-modal__card {
   position: relative;
   display: flex; align-items: stretch;
@@ -583,7 +740,6 @@ img { max-width: 100%; display: block; }
   background: #fff; border-radius: 28px;
   overflow: hidden;
   box-shadow: 0 40px 100px -30px rgba(0,0,0,.45);
-  animation: obCardIn .6s var(--ease) .1s backwards;
 }
 .onboard-modal__close {
   position: absolute; top: 14px; right: 14px; z-index: 10;

@@ -4,7 +4,7 @@
 
 set -e
 
-APP_DIR="/home/ubuntu/my-website"
+APP_DIR="/opt/toolbox-website"
 LOG_LINES=50
 
 red='\033[0;31m'
@@ -63,7 +63,8 @@ view_logs() {
 update_code() {
   echo -e "${yellow}[更新代码并重启]${nc}"
   cd "$APP_DIR"
-  git pull
+  git fetch gitee
+  git reset --hard gitee/main
   pm2 restart toolbox
   echo -e "${green}完成${nc}"
 }
