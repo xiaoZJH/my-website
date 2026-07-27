@@ -21,9 +21,9 @@
 
   /* ---------- 个人信息（请改成你自己的） ---------- */
   const PROFILE = {
-    name: '戴鑫杰',
-    initials: '戴',
-    avatar: '', // 头像图片 URL，留空则显示 initials
+    name: 'Mr.zhong',
+    initials: 'M',
+    avatar: '/images/avatar-main.jpg', // 头像图片 URL，留空则显示 initials
     role: '全栈开发者 · 界面设计师 · 开源爱好者',
     bio: '热爱用代码把想法变成现实，崇尚本地优先与隐私友好的设计。这里收集了我日常高频使用的小工具，以及一个随手记录想法的博客角落。',
     location: '中国',
@@ -33,8 +33,8 @@
       { label: 'Twitter', url: 'https://twitter.com/yourname' },
     ],
     stats: [
-      { num: '5+', label: '年经验' },
-      { num: '30+', label: '个项目' },
+      { num: '2+', label: '年经验' },
+      { num: '∞', label: '个项目' },
       { num: '1', label: '个工具' },
     ],
     cards: [
@@ -46,8 +46,10 @@
 
   /* ---------- Landing / 登录入口 ---------- */
   function initLanding() {
-    if (!landingCanvas || !landing) return;
-    landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
+    if (!landing) return;
+    if (landingCanvas) {
+      landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
+    }
     if (!enterBtn) return;
     const onEnter = () => {
       if (landing.classList.contains('is-leaving')) return;
@@ -57,6 +59,58 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !landing.classList.contains('is-leaving')) onEnter();
     });
+
+    // 极光欢迎页交互：鼠标光晕 + 极光视差 + 标题 3D 倾斜 + CTA 文案切换 + 主题切换
+    const wlBg = document.getElementById('wlBg');
+    const wlGlow = document.getElementById('wlGlow');
+    const wlHero3d = document.getElementById('wlHero3d');
+    const wlCtaText = document.getElementById('wlCtaText');
+    const wlYear = document.getElementById('wlYear');
+    if (wlYear) wlYear.textContent = new Date().getFullYear();
+
+    if (wlCtaText) {
+      const enterCta = () => { wlCtaText.textContent = '进入美好时刻'; };
+      const leaveCta = () => { wlCtaText.textContent = '进入网站'; };
+      enterBtn.addEventListener('mouseenter', enterCta);
+      enterBtn.addEventListener('focus', enterCta);
+      enterBtn.addEventListener('mouseleave', leaveCta);
+      enterBtn.addEventListener('blur', leaveCta);
+    }
+
+    const wlThemeToggle = document.getElementById('landingThemeToggle');
+    if (wlThemeToggle) {
+      wlThemeToggle.addEventListener('click', (e) => {
+        const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        applyTheme(next);
+      });
+    }
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let tx = 0, ty = 0, cx = 0, cy = 0, gx = 50, gy = 40;
+    function onMove(e) {
+      const p = e.touches ? e.touches[0] : e;
+      const x = p.clientX, y = p.clientY;
+      gx = (x / window.innerWidth) * 100;
+      gy = (y / window.innerHeight) * 100;
+      tx = (0.5 - x / window.innerWidth) * 36;
+      ty = (0.5 - y / window.innerHeight) * 36;
+      if (wlHero3d) {
+        const ry = (x / window.innerWidth - 0.5) * 10;
+        const rx = (0.5 - y / window.innerHeight) * 7;
+        wlHero3d.style.transform = `rotateY(${ry}deg) rotateX(${rx}deg)`;
+      }
+    }
+    window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: true });
+
+    if (reduce || !wlBg) return;
+    function loop() {
+      cx += (tx - cx) * 0.05; cy += (ty - cy) * 0.05;
+      if (wlBg) wlBg.style.transform = `translate(${cx}px,${cy}px)`;
+      if (wlGlow) { wlGlow.style.setProperty('--mx', gx + '%'); wlGlow.style.setProperty('--my', gy + '%'); }
+      requestAnimationFrame(loop);
+    }
+    loop();
   }
 
   function enterSite() {
@@ -532,6 +586,7 @@
       ? `<img class="profile-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
       : `<span class="profile-avatar__initials">${esc(PROFILE.initials)}</span>`;
     const statsHtml = PROFILE.stats.map((s) => `<div class="profile-stat"><span class="profile-stat__num">${esc(s.num)}</span><span class="profile-stat__label">${esc(s.label)}</span></div>`).join('');
+    const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r) => `<li>${esc(r)}</li>`)).join('');
     const cardsHtml = PROFILE.cards.map((c, i) => `<article class="card profile-card" style="--i:${i}"><h3 class="profile-card__title">${esc(c.title)}</h3><p class="profile-card__text">${esc(c.text)}</p></article>`).join('');
     const statCard = `<article class="card profile-card profile-card--stats" style="--i:3">
       <h3 class="profile-card__title">站点统计</h3>
@@ -556,7 +611,7 @@
         <div class="profile-hero__content" style="--i:1">
           <span class="hero__eyebrow">你好，我是</span>
           <h1 class="profile-hero__name">${esc(PROFILE.name)}</h1>
-          <p class="profile-hero__role">${esc(PROFILE.role)}</p>
+          <ul class="profile-role-pills">${rolePills}</ul>
           <p class="profile-hero__bio">${esc(PROFILE.bio)}</p>
           <div class="profile-hero__actions">
             <a class="btn btn--primary" href="#/tools" data-link>浏览工具箱</a>
@@ -794,12 +849,29 @@ C:\\path\\to\\python -m venv .venv
     setTimeout(blink, 900);
   })();
 
+  function optimizeOnboardVideo() {
+    const v = onboardVideo || document.getElementById('onboardVideo');
+    if (!v) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    // 越大屏 / 越高 DPR，解码缓冲区越要压低；scale(2) 会把画面再 GPU 放大回来，肉眼几乎无差
+    const qualityFactor = (W > 1920 || H > 1080 || dpr > 1.5) ? 3 : 2;
+    const vw = Math.max(320, Math.floor(W / qualityFactor));
+    const vh = Math.max(180, Math.floor(H / qualityFactor));
+    if (v.width !== vw || v.height !== vh) {
+      v.width = vw;
+      v.height = vh;
+    }
+  }
+
   function openOnboard() {
     if (authModal && authModal.classList.contains('is-open')) closeAuth();
     var om = onboardModal || document.getElementById('onboardModal');
     if (!om) return;
-    // 弹窗打开时停掉落地页的海洋 canvas 动画：避免全屏粒子/流星动画与背景视频抢主线程和 GPU（高 DPR/放大窗口时直接掉帧）
+    // 弹窗打开时若落地页仍有海洋 canvas 动画则停掉（极光版 landing 已无 canvas，这里为兼容保留）
     try { if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop(); } catch (_) {}
+    optimizeOnboardVideo();
     om.classList.add('is-open');
     om.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
@@ -814,9 +886,9 @@ C:\\path\\to\\python -m venv .venv
     onboardModal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
     try { if (onboardVideo && !onboardVideo.paused) onboardVideo.pause(); } catch (_) {}
-    // 关闭弹窗后恢复落地页动画（用户仍在欢迎页，未进入站点）
+    // 关闭弹窗后若落地页存在海洋 canvas 则恢复（极光版 landing 已无 canvas，跳过）
     try {
-      if (landing && !landing.classList.contains('is-leaving')) {
+      if (landing && !landing.classList.contains('is-leaving') && landingCanvas) {
         if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop();
         landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
       }
@@ -982,6 +1054,22 @@ C:\\path\\to\\python -m venv .venv
     showAuthToast(msg);
   }
 
+  function resolveUserAvatarUrl(avatar) {
+    if (!avatar) return '';
+    if (avatar.startsWith('data:')) return avatar;
+    if (/^\d$/.test(avatar)) return '/images/avatars/avatar-' + (parseInt(avatar, 10) + 1) + '.png?v=2';
+    return avatar;
+  }
+
+  function userAvatarHtml(user, cls) {
+    const initial = aesc((user.display_name || user.username || 'U').slice(0, 1).toUpperCase());
+    const url = resolveUserAvatarUrl(user.avatar);
+    if (url) {
+      return '<img class="' + cls + '" src="' + aesc(url) + '" alt="">';
+    }
+    return '<span class="' + cls + '">' + initial + '</span>';
+  }
+
   function renderAuthArea() {
     const landingAuth = document.getElementById('landingAuth');
     const signinOnclick = 'onclick="try{openAuth(\'login\');}catch(_){var m=document.getElementById(\'authModal\');if(m){m.classList.add(\'is-open\');m.setAttribute(\'aria-hidden\',\'false\');}}return false;"';
@@ -1000,11 +1088,10 @@ C:\\path\\to\\python -m venv .venv
     }
     if (!authArea) return;
     if (currentUser) {
-      const initial = aesc((currentUser.display_name || currentUser.username || 'U').slice(0, 1).toUpperCase());
       const name = aesc(currentUser.display_name || currentUser.username);
       authArea.innerHTML =
         '<div class="user-chip" id="userChip">' +
-          '<span class="user-chip__avatar">' + initial + '</span>' +
+          userAvatarHtml(currentUser, 'user-chip__avatar') +
           '<span class="user-chip__name">' + name + '</span>' +
           '<button class="user-chip__logout" id="authLogout" type="button" title="退出登录">退出</button>' +
         '</div>';
@@ -1453,6 +1540,15 @@ C:\\path\\to\\python -m venv .venv
 
   document.getElementById('footerYear').textContent = new Date().getFullYear();
   window.addEventListener('hashchange', route);
+
+  // 欢迎弹窗打开期间，窗口尺寸/DPR 变化时重新优化视频解码分辨率，防止缩放/最大化后掉帧
+  let onboardResizeTimer = null;
+  window.addEventListener('resize', () => {
+    if (onboardModal && onboardModal.classList.contains('is-open')) {
+      clearTimeout(onboardResizeTimer);
+      onboardResizeTimer = setTimeout(optimizeOnboardVideo, 150);
+    }
+  }, { passive: true });
 
   // 启动时拉取登录态，渲染导航区的登录按钮 / 已登录用户
   async function boot() {
