@@ -781,20 +781,40 @@ C:\\path\\to\\python -m venv .venv
 
   /* ---------- AI 智能抠图（本地 Flask sidecar） ---------- */
   async function renderRemoveBg() {
+    // 先查询后端哪些模型已在本地缓存，未就绪的模型禁用，避免触发 GitHub 下载超时
+    let modelStatus = {};
+    try {
+      const r = await fetch('/watermark-remover/api/remove-bg-models');
+      const j = await r.json();
+      if (j.ok) modelStatus = j.models || {};
+    } catch (_) {
+      // 如果查询失败，仍允许渲染，后端会做二次校验
+    }
+
     const models = [
       { value: 'u2netp', label: 'u2netp · 轻量快速（推荐）' },
       { value: 'u2net', label: 'u2net · 高精度' },
       { value: 'u2net_human_seg', label: 'u2net_human_seg · 人像专用' },
       { value: 'silueta', label: 'silueta · 剪影' },
     ];
-    const modelOptions = models.map((m) => `<option value="${esc(m.value)}">${esc(m.label)}</option>`).join('');
+    const firstReady = models.find((m) => modelStatus[m.value]?.ready)?.value || 'u2netp';
+    const anyReady = models.some((m) => modelStatus[m.value]?.ready);
+    const modelOptions = models.map((m) => {
+      const ready = !!modelStatus[m.value]?.ready;
+      const selected = m.value === firstReady ? ' selected' : '';
+      const disabled = ready ? '' : ' disabled';
+      const suffix = ready ? '' : ' · 模型未下载';
+      return `<option value="${esc(m.value)}"${selected}${disabled}>${esc(m.label)}${suffix}</option>`;
+    }).join('');
+    const noModelBanner = anyReady ? '' : '<div class="rb-banner rb-banner--warning">当前没有可用的抠图模型。请先在服务器/本机下载模型，或联系管理员。</div>';
     view.innerHTML = `
       <section class="section tool-fullpage">
         <div class="section__head">
           <div><h2 class="section__title">AI 智能抠图</h2><div class="section__sub">一键移除背景，导出透明 PNG · 本地运行</div></div>
           <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
         </div>
-        <div class="rb-card reveal">
+          <div class="rb-card reveal">
+          ${noModelBanner}
           <div class="rb-upload" id="rbUpload">
             <input type="file" id="rbFile" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
             <div class="rb-drop" id="rbDrop" tabindex="0" role="button" aria-label="上传图片">

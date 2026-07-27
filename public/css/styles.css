@@ -1355,6 +1355,9 @@ img { max-width: 100%; display: block; }
 .rb-status { margin-top: var(--sp-4); font-size: .92rem; }
 .rb-status--error { color: #ef4444; }
 .rb-status--info { color: var(--text-soft); display: flex; align-items: center; gap: 8px; }
+.rb-banner { padding: 12px 16px; border-radius: 12px; margin-bottom: var(--sp-4); font-size: .92rem; line-height: 1.5; }
+.rb-banner--warning { background: rgba(239, 68, 68, .08); color: #ef4444; border: 1px solid rgba(239, 68, 68, .2); }
+.rb-select option:disabled { color: var(--text-soft); opacity: .55; font-style: italic; }
 
 /* ---------- Auth（登录 / 注册） ---------- */
 .auth-area { display: flex; align-items: center; }

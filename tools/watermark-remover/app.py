@@ -33,6 +33,31 @@ _tasks_lock = threading.Lock()
 # AI 抠图 session 缓存（按模型名，避免每次请求重新加载 ONNX 模型）
 _REMOVE_BG_SESSIONS = {}
 
+# rembg 模型缓存目录与可用性校验（避免首次使用因 GitHub 超时而报错）
+U2NET_HOME = os.environ.get("U2NET_HOME", os.path.join(os.path.expanduser("~"), ".u2net"))
+_REMOVE_BG_MODELS = {
+    "u2netp": {"file": "u2netp.onnx", "min_size": 4 * 1024 * 1024, "label": "u2netp · 轻量快速（推荐）"},
+    "u2net": {"file": "u2net.onnx", "min_size": 160 * 1024 * 1024, "label": "u2net · 高精度"},
+    "u2net_human_seg": {"file": "u2net_human_seg.onnx", "min_size": 160 * 1024 * 1024, "label": "u2net_human_seg · 人像专用"},
+    "silueta": {"file": "silueta.onnx", "min_size": 35 * 1024 * 1024, "label": "silueta · 剪影"},
+}
+
+
+def remove_bg_model_status():
+    """返回各抠图模型是否已在本地缓存且完整。"""
+    status = {}
+    for key, info in _REMOVE_BG_MODELS.items():
+        path = os.path.join(U2NET_HOME, info["file"])
+        exists = os.path.exists(path)
+        size = os.path.getsize(path) if exists else 0
+        status[key] = {
+            "ready": exists and size >= info["min_size"],
+            "size": size,
+            "file": info["file"],
+        }
+    return status
+
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(RESULT_DIR, exist_ok=True)  # 关键：原代码漏建 results 目录，imwrite 会失败
 
@@ -815,6 +840,16 @@ def auto_detect_remove():
     })
 
 
+@bp.route("/api/remove-bg-models", methods=["GET"])
+def remove_bg_models_status():
+    """返回 AI 抠图模型在本地缓存中的就绪状态，供前端禁用未下载模型。"""
+    return jsonify({
+        "ok": True,
+        "models": remove_bg_model_status(),
+        "home": U2NET_HOME,
+    })
+
+
 @bp.route("/api/remove-bg", methods=["POST"])
 def remove_bg():
     """AI 抠图：接收图片，返回透明背景 PNG（data URI）。"""
@@ -825,9 +860,21 @@ def remove_bg():
         return jsonify({"ok": False, "error": "不支持的图片格式"}), 400
 
     model = request.form.get("model", "u2netp").strip().lower()
-    allowed_models = {"u2net", "u2netp", "u2net_human_seg", "silueta"}
-    if model not in allowed_models:
+    if model not in _REMOVE_BG_MODELS:
         model = "u2netp"
+
+    # 先检查模型文件是否已就绪，避免 rembg 内部去 GitHub 下载导致长时间超时
+    status = remove_bg_model_status()
+    if not status.get(model, {}).get("ready"):
+        info = _REMOVE_BG_MODELS[model]
+        return jsonify({
+            "ok": False,
+            "error": (
+                f"模型 {info['label']} 尚未下载到本地。"
+                f"请从 GitHub Release 下载 {info['file']} 并放到 {U2NET_HOME} 目录，"
+                f"或先使用已就绪的模型。"
+            ),
+        }), 400
 
     try:
         from rembg import remove, new_session
