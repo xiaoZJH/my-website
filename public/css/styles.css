@@ -1255,6 +1255,107 @@ img { max-width: 100%; display: block; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- AI 智能抠图 ---------- */
+.rb-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: clamp(18px, 3vw, 32px);
+  margin-top: var(--sp-5);
+}
+.rb-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  min-height: 260px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  background-image: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 40%);
+  color: var(--text-soft);
+  text-align: center;
+  padding: var(--sp-5);
+  cursor: pointer;
+  transition: border-color .25s, background .25s, transform .25s var(--ease);
+}
+.rb-drop:hover, .rb-drop.is-active, .rb-drop:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateY(-2px);
+}
+.rb-drop svg { color: var(--accent); opacity: .85; }
+.rb-drop p { font-size: 1.1rem; font-weight: 600; color: var(--text); margin: 0; }
+.rb-drop span { font-size: .85rem; opacity: .75; }
+.rb-controls {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); margin-top: var(--sp-5);
+}
+.rb-model { display: flex; align-items: center; gap: 10px; }
+.rb-model label { font-size: .9rem; font-weight: 600; color: var(--text); }
+.rb-select {
+  appearance: none; min-width: 220px;
+  padding: 10px 34px 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-solid);
+  color: var(--text);
+  font: inherit; font-size: .92rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+  cursor: pointer;
+}
+.rb-actions { display: flex; gap: var(--sp-3); }
+.rb-preview { margin-top: var(--sp-5); }
+.rb-compare {
+  position: relative; display: inline-block; max-width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background:
+    conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg) 0 0 / 20px 20px;
+  box-shadow: var(--shadow-md);
+  user-select: none; touch-action: none;
+  line-height: 0;
+}
+[data-theme="dark"] .rb-compare { background: conic-gradient(#1f2937 90deg, #111827 90deg 180deg, #1f2937 180deg 270deg, #111827 270deg) 0 0 / 20px 20px; }
+.rb-compare__before {
+  display: block; max-width: 100%; height: auto; pointer-events: none;
+}
+.rb-compare__after {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 50%; overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,.4);
+}
+.rb-compare__after img {
+  position: absolute; top: 0; left: 0; height: 100%; width: auto;
+  max-width: none; pointer-events: none;
+}
+.rb-compare__slider {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 40px; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center;
+  cursor: ew-resize; z-index: 3;
+}
+.rb-compare__slider::before {
+  content: ''; position: absolute; inset: 0; width: 2px; margin: auto;
+  background: rgba(255,255,255,.85); box-shadow: 0 0 8px rgba(0,0,0,.25);
+}
+.rb-compare__thumb {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
+  display: grid; place-items: center;
+}
+.rb-compare__thumb::before {
+  content: '‹›'; font-size: 14px; font-weight: 700; color: #fff; letter-spacing: 2px;
+}
+.rb-compare__label {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  font-size: .72rem; font-weight: 600; color: var(--text);
+  background: rgba(255,255,255,.85); padding: 3px 10px; border-radius: 999px;
+  pointer-events: none; backdrop-filter: blur(4px);
+}
+[data-theme="dark"] .rb-compare__label { background: rgba(0,0,0,.55); color: var(--text); }
+.rb-status { margin-top: var(--sp-4); font-size: .92rem; }
+.rb-status--error { color: #ef4444; }
+.rb-status--info { color: var(--text-soft); display: flex; align-items: center; gap: 8px; }
+
 /* ---------- Auth（登录 / 注册） ---------- */
 .auth-area { display: flex; align-items: center; }
 .auth-btn {

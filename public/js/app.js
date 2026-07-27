@@ -779,6 +779,205 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
+  /* ---------- AI 智能抠图（本地 Flask sidecar） ---------- */
+  async function renderRemoveBg() {
+    const models = [
+      { value: 'u2netp', label: 'u2netp · 轻量快速（推荐）' },
+      { value: 'u2net', label: 'u2net · 高精度' },
+      { value: 'u2net_human_seg', label: 'u2net_human_seg · 人像专用' },
+      { value: 'silueta', label: 'silueta · 剪影' },
+    ];
+    const modelOptions = models.map((m) => `<option value="${esc(m.value)}">${esc(m.label)}</option>`).join('');
+    view.innerHTML = `
+      <section class="section tool-fullpage">
+        <div class="section__head">
+          <div><h2 class="section__title">AI 智能抠图</h2><div class="section__sub">一键移除背景，导出透明 PNG · 本地运行</div></div>
+          <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
+        </div>
+        <div class="rb-card reveal">
+          <div class="rb-upload" id="rbUpload">
+            <input type="file" id="rbFile" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+            <div class="rb-drop" id="rbDrop" tabindex="0" role="button" aria-label="上传图片">
+              <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p>拖拽图片到此处，或点击上传</p>
+              <span>支持 JPG / PNG / WebP / BMP，建议小于 10MB</span>
+            </div>
+          </div>
+          <div class="rb-controls" id="rbControls" hidden>
+            <div class="rb-model">
+              <label for="rbModel">AI 模型</label>
+              <select id="rbModel" class="rb-select">${modelOptions}</select>
+            </div>
+            <div class="rb-actions">
+              <button class="btn btn--primary" id="rbDownload" type="button">下载透明 PNG</button>
+              <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
+            </div>
+          </div>
+          <div class="rb-preview" id="rbPreview" hidden>
+            <div class="rb-compare" id="rbCompare">
+              <img class="rb-compare__before" id="rbBefore" alt="原图" draggable="false">
+              <div class="rb-compare__after" id="rbAfterWrap" aria-label="抠图结果">
+                <img id="rbAfter" alt="抠图结果" draggable="false">
+              </div>
+              <div class="rb-compare__slider" id="rbSlider" aria-label="对比滑块" tabindex="0">
+                <div class="rb-compare__thumb"></div>
+                <span class="rb-compare__label">滑动对比</span>
+              </div>
+            </div>
+          </div>
+          <div class="rb-status" id="rbStatus"></div>
+        </div>
+      </section>`;
+    bindReveal();
+
+    const upload = document.getElementById('rbUpload');
+    const fileInput = document.getElementById('rbFile');
+    const drop = document.getElementById('rbDrop');
+    const controls = document.getElementById('rbControls');
+    const preview = document.getElementById('rbPreview');
+    const modelSel = document.getElementById('rbModel');
+    const downloadBtn = document.getElementById('rbDownload');
+    const resetBtn = document.getElementById('rbReset');
+    const beforeImg = document.getElementById('rbBefore');
+    const afterImg = document.getElementById('rbAfter');
+    const afterWrap = document.getElementById('rbAfterWrap');
+    const slider = document.getElementById('rbSlider');
+    const status = document.getElementById('rbStatus');
+
+    let currentResult = null;
+    let currentFileName = 'remove-bg.png';
+    let isDragging = false;
+
+    function setStatus(html, type = 'info') {
+      status.className = 'rb-status rb-status--' + type;
+      status.innerHTML = html;
+      status.hidden = !html;
+    }
+
+    function setLoading(msg) {
+      setStatus('<span class="spinner-sm"></span> ' + esc(msg), 'info');
+      controls.hidden = true;
+      preview.hidden = true;
+    }
+
+    function setError(msg) {
+      setStatus('⚠ ' + esc(msg), 'error');
+    }
+
+    function reset() {
+      currentResult = null;
+      currentFileName = 'remove-bg.png';
+      fileInput.value = '';
+      beforeImg.src = '';
+      afterImg.src = '';
+      upload.hidden = false;
+      controls.hidden = true;
+      preview.hidden = true;
+      status.hidden = true;
+      setComparePosition(50);
+    }
+
+    function setComparePosition(pct) {
+      pct = Math.max(2, Math.min(98, pct));
+      afterWrap.style.width = pct + '%';
+      slider.style.left = pct + '%';
+    }
+
+    function updateCompareFromEvent(e) {
+      const rect = rbCompare.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      setComparePosition((x / rect.width) * 100);
+    }
+
+    async function processFile(file) {
+      if (!file) return;
+      const valid = /image\/(png|jpeg|jpg|webp|bmp)/i.test(file.type);
+      if (!valid) {
+        setError('不支持的图片格式，请上传 JPG / PNG / WebP / BMP');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setError('图片过大，建议压缩到 10MB 以内');
+        return;
+      }
+      currentFileName = (file.name.replace(/\.[^.]+$/, '') || 'remove-bg') + '.png';
+      upload.hidden = true;
+      setLoading('AI 正在识别前景并移除背景，首次使用会自动下载模型…');
+
+      const form = new FormData();
+      form.append('image', file);
+      form.append('model', modelSel.value);
+
+      try {
+        const r = await fetch('/watermark-remover/api/remove-bg', { method: 'POST', body: form });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || '处理失败');
+        currentResult = j.result_url;
+        beforeImg.src = URL.createObjectURL(file);
+        afterImg.src = j.result_url;
+
+        let loaded = 0;
+        function onImageLoad() {
+          loaded++;
+          if (loaded >= 2) {
+            setComparePosition(50);
+            setStatus('', 'info');
+            controls.hidden = false;
+            preview.hidden = false;
+          }
+        }
+        beforeImg.onload = onImageLoad;
+        afterImg.onload = onImageLoad;
+        if (beforeImg.complete) onImageLoad();
+        if (afterImg.complete) onImageLoad();
+      } catch (e) {
+        setError(String(e.message || e));
+        upload.hidden = false;
+      }
+    }
+
+    drop.addEventListener('click', () => fileInput.click());
+    drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+    fileInput.addEventListener('change', () => processFile(fileInput.files[0]));
+
+    ['dragenter', 'dragover'].forEach((ev) => {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('is-active'); });
+    });
+    ['dragleave', 'drop'].forEach((ev) => {
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-active'); });
+    });
+    drop.addEventListener('drop', (e) => processFile(e.dataTransfer.files[0]));
+
+    const rbCompare = document.getElementById('rbCompare');
+    slider.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); updateCompareFromEvent(e); });
+    slider.addEventListener('touchstart', (e) => { isDragging = true; updateCompareFromEvent(e); }, { passive: false });
+    window.addEventListener('mousemove', (e) => { if (isDragging) updateCompareFromEvent(e); });
+    window.addEventListener('touchmove', (e) => { if (isDragging) { e.preventDefault(); updateCompareFromEvent(e); } }, { passive: false });
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('touchend', () => isDragging = false);
+    rbCompare.addEventListener('click', (e) => { if (e.target !== slider && !slider.contains(e.target)) updateCompareFromEvent(e); });
+
+    modelSel.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) processFile(file);
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!currentResult) return;
+      const a = document.createElement('a');
+      a.href = currentResult;
+      a.download = currentFileName;
+      a.click();
+    });
+
+    resetBtn.addEventListener('click', reset);
+
+    activeCleanup = () => {
+      isDragging = false;
+      if (beforeImg.src && beforeImg.src.startsWith('blob:')) URL.revokeObjectURL(beforeImg.src);
+    };
+  }
+
   /* ---------- Auth（登录 / 注册 Modal） ---------- */
   const authModal = document.getElementById('authModal');
   const authArea = document.getElementById('authArea');
@@ -1355,6 +1554,7 @@ C:\\path\\to\\python -m venv .venv
     const parts = hash.split('/').filter(Boolean);
     setActive(hash);
     if (parts[0] === 'tools' && parts[1] === 'watermark') return renderWatermark();
+    if (parts[0] === 'tools' && parts[1] === 'remove-bg') return renderRemoveBg();
     if (parts[0] === 'tools' && parts[1] === 'docx-watermark') return renderDocxWatermark();
     if (parts[0] === 'tools') return renderTools();
     if (parts[0] === 'blog' && parts[1]) return renderPost(parts[1]);

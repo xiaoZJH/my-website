@@ -30,6 +30,9 @@ MAX_BATCH_SIZE = 20                    # 单次批量最多 20 张
 VIDEO_TASKS = {}
 _tasks_lock = threading.Lock()
 
+# AI 抠图 session 缓存（按模型名，避免每次请求重新加载 ONNX 模型）
+_REMOVE_BG_SESSIONS = {}
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(RESULT_DIR, exist_ok=True)  # 关键：原代码漏建 results 目录，imwrite 会失败
 
@@ -810,6 +813,49 @@ def auto_detect_remove():
         "width": int(img.shape[1]),
         "height": int(img.shape[0]),
     })
+
+
+@bp.route("/api/remove-bg", methods=["POST"])
+def remove_bg():
+    """AI 抠图：接收图片，返回透明背景 PNG（data URI）。"""
+    if "image" not in request.files:
+        return jsonify({"ok": False, "error": "缺少图片"}), 400
+    image_file = request.files["image"]
+    if image_file.filename == "" or not allowed_file(image_file.filename):
+        return jsonify({"ok": False, "error": "不支持的图片格式"}), 400
+
+    model = request.form.get("model", "u2netp").strip().lower()
+    allowed_models = {"u2net", "u2netp", "u2net_human_seg", "silueta"}
+    if model not in allowed_models:
+        model = "u2netp"
+
+    try:
+        from rembg import remove, new_session
+        from PIL import Image
+        import io
+
+        input_data = image_file.read()
+        input_image = Image.open(io.BytesIO(input_data)).convert("RGBA")
+        session = _REMOVE_BG_SESSIONS.get(model)
+        if session is None:
+            session = new_session(model)
+            _REMOVE_BG_SESSIONS[model] = session
+        output_image = remove(input_image, session=session)
+
+        buf = io.BytesIO()
+        output_image.save(buf, format="PNG", optimize=True)
+        png_bytes = buf.getvalue()
+        data_uri = f"data:image/png;base64,{base64.b64encode(png_bytes).decode('utf-8')}"
+
+        return jsonify({
+            "ok": True,
+            "result_url": data_uri,
+            "width": int(output_image.width),
+            "height": int(output_image.height),
+            "model": model,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"抠图处理失败：{str(e)}"}), 500
 
 
 app.register_blueprint(bp)
