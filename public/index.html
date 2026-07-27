@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=ZCOOL+XiaoWei&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260727k" />
 </head>
 <body>
   <!-- Landing / Splash：粒子波浪全屏入口 -->
@@ -255,6 +255,9 @@
 
   <!-- 进入网站 Onboarding：卡通角色 + 身份卡片 -->
   <div class="onboard-modal" id="onboardModal" aria-hidden="true">
+    <video class="onboard-modal__video" id="onboardVideo" autoplay muted loop playsinline decoding="async" aria-hidden="true">
+      <source src="/videos/bg-wildsky.mp4" type="video/mp4">
+    </video>
     <div class="onboard-modal__scrim" data-onboard-close></div>
     <div class="onboard-modal__stage" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
       <div class="onboard-modal__card">
@@ -299,16 +302,16 @@
 
         <div class="onboard-avatars" id="onboardAvatars" role="radiogroup" aria-label="选择头像">
           <button type="button" class="onboard-avatar is-active" data-avatar="0" aria-label="头像 1" aria-checked="true">
-            <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#fde4d0"/><path d="M12 28c0-12 9-20 20-20s20 8 20 20c0 6-2 14-6 18-4 4-10 6-14 6s-10-2-14-6c-4-4-6-12-6-18z" fill="#f5d0a9"/><path d="M12 26c2-8 10-12 20-12s18 4 20 12v6c0 8-6 14-20 14s-20-6-20-14v-6z" fill="#e8b88b"/><circle cx="24" cy="34" r="3" fill="#3d2c24"/><circle cx="40" cy="34" r="3" fill="#3d2c24"/><path d="M28 44q4 4 8 0" fill="none" stroke="#3d2c24" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <img src="/images/avatars/avatar-1.png?v=2" alt="" />
           </button>
           <button type="button" class="onboard-avatar" data-avatar="1" aria-label="头像 2" aria-checked="false">
-            <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#fde4d0"/><path d="M10 28c0-10 10-18 22-18s22 8 22 18v8c0 10-10 16-22 16s-22-6-22-16v-8z" fill="#4a3b32"/><circle cx="24" cy="34" r="4" fill="#fff"/><circle cx="40" cy="34" r="4" fill="#fff"/><circle cx="24" cy="34" r="1.5" fill="#3d2c24"/><circle cx="40" cy="34" r="1.5" fill="#3d2c24"/><rect x="20" y="30" width="8" height="8" rx="2" fill="none" stroke="#3d2c24" stroke-width="1.5"/><rect x="36" y="30" width="8" height="8" rx="2" fill="none" stroke="#3d2c24" stroke-width="1.5"/><path d="M27 46q5 4 10 0" fill="none" stroke="#3d2c24" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <img src="/images/avatars/avatar-2.png?v=2" alt="" />
           </button>
           <button type="button" class="onboard-avatar" data-avatar="2" aria-label="头像 3" aria-checked="false">
-            <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#fde4d0"/><path d="M18 18c6-6 16-8 24-4 6 3 10 10 10 18v6c0 10-10 16-20 16s-20-6-20-16v-6c0-5 2-10 6-14z" fill="#c68863"/><circle cx="16" cy="28" r="6" fill="#c68863"/><circle cx="48" cy="28" r="6" fill="#c68863"/><circle cx="24" cy="34" r="3" fill="#3d2c24"/><circle cx="40" cy="34" r="3" fill="#3d2c24"/><path d="M28 45q4 4 8 0" fill="none" stroke="#3d2c24" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <img src="/images/avatars/avatar-3.png?v=2" alt="" />
           </button>
           <button type="button" class="onboard-avatar" data-avatar="3" aria-label="头像 4" aria-checked="false">
-            <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#fde4d0"/><path d="M12 30c0-10 9-18 20-18s20 8 20 18v8c0 8-9 14-20 14s-20-6-20-14v-8z" fill="#6b4c35"/><circle cx="24" cy="34" r="3" fill="#3d2c24"/><circle cx="40" cy="34" r="3" fill="#3d2c24"/><path d="M28 46q4 4 8 0" fill="none" stroke="#3d2c24" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <img src="/images/avatars/avatar-4.png?v=2" alt="" />
           </button>
           <label class="onboard-avatar onboard-avatar--upload" aria-label="自定义头像">
             <input type="file" id="onboardAvatarUpload" accept="image/*" hidden />
@@ -339,6 +342,6 @@
 </div>
 
   <script src="/js/tools.js"></script>
-  <script src="/js/app.js?v=12"></script>
+  <script src="/js/app.js?v=15"></script>
 </body>
 </html>

@@ -736,6 +736,7 @@ C:\\path\\to\\python -m venv .venv
 
   /* ---------- Onboarding（进入网站） ---------- */
   const onboardModal = document.getElementById('onboardModal');
+  const onboardVideo = document.getElementById('onboardVideo');
   const onboardForm = document.getElementById('onboardForm');
   const onboardName = document.getElementById('onboardName');
   const onboardError = document.getElementById('onboardError');
@@ -797,9 +798,12 @@ C:\\path\\to\\python -m venv .venv
     if (authModal && authModal.classList.contains('is-open')) closeAuth();
     var om = onboardModal || document.getElementById('onboardModal');
     if (!om) return;
+    // 弹窗打开时停掉落地页的海洋 canvas 动画：避免全屏粒子/流星动画与背景视频抢主线程和 GPU（高 DPR/放大窗口时直接掉帧）
+    try { if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop(); } catch (_) {}
     om.classList.add('is-open');
     om.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    try { var v = onboardVideo || document.getElementById('onboardVideo'); if (v && v.paused) v.play(); } catch (_) {}
     var nm = onboardName || document.getElementById('onboardName');
     if (nm) setTimeout(() => nm.focus(), 80);
   }
@@ -809,6 +813,14 @@ C:\\path\\to\\python -m venv .venv
     onboardModal.classList.remove('is-open');
     onboardModal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    try { if (onboardVideo && !onboardVideo.paused) onboardVideo.pause(); } catch (_) {}
+    // 关闭弹窗后恢复落地页动画（用户仍在欢迎页，未进入站点）
+    try {
+      if (landing && !landing.classList.contains('is-leaving')) {
+        if (landingSeaStop && typeof landingSeaStop.stop === 'function') landingSeaStop.stop();
+        landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
+      }
+    } catch (_) {}
     try { onboardForm?.reset(); } catch (_) {}
     if (onboardError) onboardError.hidden = true;
     onboardName && (onboardName.value = '');
