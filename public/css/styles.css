@@ -1335,11 +1335,6 @@ img { max-width: 100%; display: block; }
 }
 .rb-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .rb-panel__title { font-size: .95rem; font-weight: 700; color: var(--text); }
-.rb-toggle {
-  display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--text-soft);
-  cursor: pointer; user-select: none;
-}
-.rb-toggle input { accent-color: var(--accent); }
 .rb-canvas-wrap {
   position: relative; flex: 1; min-height: 320px;
   display: flex; align-items: center; justify-content: center;
@@ -1357,66 +1352,19 @@ img { max-width: 100%; display: block; }
 .rb-preview-wrap {
   flex: 1; min-height: 320px; display: flex; align-items: center; justify-content: center;
 }
-.rb-compare {
+.rb-result {
   position: relative; display: inline-block; max-width: 100%; max-height: 100%;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background:
     conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg) 0 0 / 20px 20px;
   box-shadow: var(--shadow-md);
-  user-select: none; touch-action: none; line-height: 0; overflow: hidden;
+  line-height: 0; overflow: hidden;
 }
-[data-theme="dark"] .rb-compare { background: conic-gradient(#1f2937 90deg, #111827 90deg 180deg, #1f2937 180deg 270deg, #111827 270deg) 0 0 / 20px 20px; }
-.rb-compare__before { display: block; max-width: 100%; max-height: 70vh; height: auto; pointer-events: none; }
-.rb-compare__after {
-  position: absolute; top: 0; left: 0; bottom: 0; width: 50%; overflow: hidden;
-  border-right: 1px solid rgba(255,255,255,.4);
+[data-theme="dark"] .rb-result { background: conic-gradient(#1f2937 90deg, #111827 90deg 180deg, #1f2937 180deg 270deg, #111827 270deg) 0 0 / 20px 20px; }
+.rb-result img {
+  display: block; height: auto; width: auto; max-width: 100%; max-height: 70vh;
 }
-.rb-compare__after img {
-  position: absolute; top: 0; left: 0; height: 100%; width: auto;
-  max-width: none; pointer-events: none;
-}
-.rb-compare__slider {
-  position: absolute; top: 0; bottom: 0; left: 50%; width: 40px; transform: translateX(-50%);
-  display: flex; align-items: center; justify-content: center;
-  cursor: ew-resize; z-index: 3;
-}
-.rb-compare__slider::before {
-  content: ''; position: absolute; inset: 0; width: 2px; margin: auto;
-  background: rgba(255,255,255,.85); box-shadow: 0 0 8px rgba(0,0,0,.25);
-}
-.rb-compare__thumb {
-  width: 34px; height: 34px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 4px 14px rgba(0,0,0,.3); display: grid; place-items: center;
-}
-.rb-compare__thumb::before {
-  content: '‹›'; font-size: 14px; font-weight: 700; color: #fff; letter-spacing: 2px;
-}
-.rb-compare__label {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  font-size: .72rem; font-weight: 600; color: var(--text);
-  background: rgba(255,255,255,.85); padding: 3px 10px; border-radius: 999px;
-  pointer-events: none; backdrop-filter: blur(4px);
-}
-[data-theme="dark"] .rb-compare__label { background: rgba(0,0,0,.55); color: var(--text); }
-/* 不对比原图时：结果图回到正常文档流、自适应铺满，隐藏滑块/原图 */
-.rb-compare:not(.is-split) .rb-compare__before { display: none; }
-.rb-compare:not(.is-split) .rb-compare__after {
-  position: static;
-  width: auto !important;
-  height: auto;
-  border-right: none;
-}
-.rb-compare:not(.is-split) .rb-compare__after img {
-  position: static;
-  display: block;
-  height: auto;
-  width: auto;
-  max-width: 100%;
-  max-height: 70vh;
-}
-.rb-compare:not(.is-split) .rb-compare__slider { display: none; }
 .rb-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: .9rem; font-weight: 600; color: var(--text-soft); pointer-events: none;

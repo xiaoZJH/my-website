@@ -851,18 +851,10 @@ C:\\path\\to\\python -m venv .venv
               <div class="rb-panel rb-panel--result">
                 <div class="rb-panel__head">
                   <span class="rb-panel__title">预览</span>
-                  <label class="rb-toggle"><input type="checkbox" id="rbCompareToggle"> 对比原图</label>
                 </div>
                 <div class="rb-preview-wrap" id="rbPreviewWrap">
-                  <div class="rb-compare" id="rbCompare">
-                    <img class="rb-compare__before" id="rbBefore" alt="原图" draggable="false">
-                    <div class="rb-compare__after" id="rbAfterWrap" aria-label="抠图结果">
-                      <img id="rbAfter" alt="抠图结果" draggable="false">
-                    </div>
-                    <div class="rb-compare__slider" id="rbSlider" aria-label="对比滑块" tabindex="0">
-                      <div class="rb-compare__thumb"></div>
-                      <span class="rb-compare__label">滑动对比</span>
-                    </div>
+                  <div class="rb-result" id="rbResult">
+                    <img id="rbAfter" alt="抠图结果" draggable="false">
                     <div class="rb-empty" id="rbEmpty">尚未抠图</div>
                   </div>
                 </div>
@@ -886,12 +878,7 @@ C:\\path\\to\\python -m venv .venv
     const canvas = document.getElementById('rbCanvas');
     const canvasWrap = document.getElementById('rbCanvasWrap');
     const ctx = canvas.getContext('2d');
-    const beforeImg = document.getElementById('rbBefore');
     const afterImg = document.getElementById('rbAfter');
-    const afterWrap = document.getElementById('rbAfterWrap');
-    const slider = document.getElementById('rbSlider');
-    const rbCompare = document.getElementById('rbCompare');
-    const compareToggle = document.getElementById('rbCompareToggle');
     const emptyTip = document.getElementById('rbEmpty');
     const status = document.getElementById('rbStatus');
 
@@ -927,14 +914,12 @@ C:\\path\\to\\python -m venv .venv
       crop = null;
       sourceImage = null;
       fileInput.value = '';
-      beforeImg.src = '';
       afterImg.src = '';
       downloadBtn.disabled = true;
       clearCropBtn.disabled = true;
       upload.hidden = false;
       editor.hidden = true;
       status.hidden = true;
-      setComparePosition(50);
     }
 
     /* ---------- 画布绘制与选区交互 ---------- */
@@ -1087,26 +1072,6 @@ C:\\path\\to\\python -m venv .venv
       draw();
     });
 
-    /* ---------- 预览对比 ---------- */
-    function setComparePosition(pct) {
-      pct = Math.max(2, Math.min(98, pct));
-      afterWrap.style.width = pct + '%';
-      slider.style.left = pct + '%';
-    }
-    function updateCompareFromEvent(e) {
-      const rect = rbCompare.getBoundingClientRect();
-      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-      setComparePosition((x / rect.width) * 100);
-    }
-    let isDragging = false;
-    slider.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); updateCompareFromEvent(e); });
-    slider.addEventListener('touchstart', (e) => { isDragging = true; updateCompareFromEvent(e); }, { passive: false });
-    rbCompare.addEventListener('click', (e) => { if (e.target !== slider && !slider.contains(e.target)) updateCompareFromEvent(e); });
-    compareToggle.addEventListener('change', () => {
-      rbCompare.classList.toggle('is-split', compareToggle.checked);
-    });
-    rbCompare.classList.toggle('is-split', compareToggle.checked);
-
     /* ---------- 处理与下载 ---------- */
     async function processFile(file) {
       if (!file) return;
@@ -1126,7 +1091,6 @@ C:\\path\\to\\python -m venv .venv
       crop = null;
       clearCropBtn.disabled = true;
       fitCanvas();
-      beforeImg.src = sourceImage.src;
       afterImg.src = '';
       emptyTip.style.display = '';
       setStatus('已加载原图。框选要保留的区域后，点击「开始抠图」。', 'info');
@@ -1189,7 +1153,6 @@ C:\\path\\to\\python -m venv .venv
     window.addEventListener('resize', () => { if (sourceImage && !editor.hidden) fitCanvas(); });
 
     activeCleanup = () => {
-      isDragging = false;
       if (sourceImage && sourceImage.src.startsWith('blob:')) URL.revokeObjectURL(sourceImage.src);
     };
   }
