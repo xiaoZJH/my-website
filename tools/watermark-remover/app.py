@@ -28,6 +28,9 @@ MAX_BATCH_SIZE = 20                    # 单次批量最多 20 张
 
 # 视频任务状态（内存存储，重启即清空）
 VIDEO_TASKS = {}
+
+# 串行化 rembg 推理（onnxruntime 不支持并发调用同一 session，避免 threaded 模式下崩溃）
+_REMOVE_BG_LOCK = threading.Lock()
 _tasks_lock = threading.Lock()
 
 # AI 抠图 session 缓存（按模型名，避免每次请求重新加载 ONNX 模型）
@@ -918,13 +921,14 @@ def remove_bg():
             _REMOVE_BG_SESSIONS[model] = session
 
         # 若选区有效且非全图，则仅对 ROI 抠图后贴回原尺寸透明画布
-        if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
-            roi = input_image.crop(crop_box)
-            roi_output = remove(roi, session=session)
-            output_image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-            output_image.paste(roi_output, (crop_box[0], crop_box[1]), roi_output)
-        else:
-            output_image = remove(input_image, session=session)
+        with _REMOVE_BG_LOCK:
+            if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
+                roi = input_image.crop(crop_box)
+                roi_output = remove(roi, session=session)
+                output_image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                output_image.paste(roi_output, (crop_box[0], crop_box[1]), roi_output)
+            else:
+                output_image = remove(input_image, session=session)
 
         buf = io.BytesIO()
         output_image.save(buf, format="PNG", optimize=True)
@@ -949,4 +953,4 @@ app.register_blueprint(bp)
 if __name__ == "__main__":
     # 仅本机监听，配合工具箱 Node 服务以 iframe 嵌入；端口可由 WM_PORT 覆盖
     # 生产环境通过 Nginx 反代 /watermark-remover/ 到本端口
-    app.run(host="127.0.0.1", port=WM_PORT, debug=False, use_reloader=False)
+    app.run(host="127.0.0.1", port=WM_PORT, debug=False, use_reloader=False, threaded=True)

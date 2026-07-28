@@ -851,7 +851,7 @@ C:\\path\\to\\python -m venv .venv
               <div class="rb-panel rb-panel--result">
                 <div class="rb-panel__head">
                   <span class="rb-panel__title">预览</span>
-                  <label class="rb-toggle"><input type="checkbox" id="rbCompareToggle" checked> 对比原图</label>
+                  <label class="rb-toggle"><input type="checkbox" id="rbCompareToggle"> 对比原图</label>
                 </div>
                 <div class="rb-preview-wrap" id="rbPreviewWrap">
                   <div class="rb-compare" id="rbCompare">
@@ -897,6 +897,7 @@ C:\\path\\to\\python -m venv .venv
 
     let currentResult = null;
     let currentFileName = 'remove-bg.png';
+    let currentFile = null;          // 上传的源文件（点击或拖拽都存到这里，避免拖拽时 fileInput.files 为空导致拿不到文件）
     let sourceImage = null;          // 原图 HTMLImageElement
     let crop = null;                 // 选区 {x,y,w,h} 相对原图 0-1；null=全图
     let stage = { scale: 1, ox: 0, oy: 0, dw: 0, dh: 0 }; // canvas 上的绘制区域（CSS px）
@@ -1114,6 +1115,7 @@ C:\\path\\to\\python -m venv .venv
       if (file.size > 50 * 1024 * 1024) { setError('图片过大，建议压缩到 10MB 以内'); return; }
 
       currentFileName = (file.name.replace(/\.[^.]+$/, '') || 'remove-bg') + '.png';
+      currentFile = file;
       sourceImage = await new Promise((res) => {
         const img = new Image();
         img.onload = () => res(img);
@@ -1131,7 +1133,7 @@ C:\\path\\to\\python -m venv .venv
     }
 
     async function runRemoveBg() {
-      const file = fileInput.files[0];
+      const file = currentFile || fileInput.files[0];
       if (!file || !sourceImage) return;
       setLoading('AI 正在识别前景并移除背景，首次使用会自动下载模型…');
       const form = new FormData();
@@ -1139,21 +1141,28 @@ C:\\path\\to\\python -m venv .venv
       form.append('model', modelSel.value);
       if (crop) form.append('crop', JSON.stringify([crop.x, crop.y, crop.w, crop.h]));
 
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 120000);
       try {
-        const r = await fetch('/watermark-remover/api/remove-bg', { method: 'POST', body: form });
+        const r = await fetch('/watermark-remover/api/remove-bg', { method: 'POST', body: form, signal: controller.signal });
+        if (!r.ok) throw new Error('服务返回 ' + r.status);
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || '处理失败');
         currentResult = j.result_url;
-        afterImg.src = j.result_url;
+        afterImg.onerror = () => { clearTimeout(timer); setError('结果图片加载失败，请重试'); };
         afterImg.onload = () => {
+          clearTimeout(timer);
           setStatus('抠图完成 ✔ 可下载透明 PNG，或调整选区重新抠图。', 'info');
           processBtn.disabled = false;
           downloadBtn.disabled = false;
           emptyTip.style.display = 'none';
         };
+        afterImg.src = j.result_url;
         if (afterImg.complete) afterImg.onload();
       } catch (e) {
-        setError(String(e.message || e));
+        clearTimeout(timer);
+        if (e && e.name === 'AbortError') setError('处理超时（超过 120 秒），请换更小/更简单的图片或重试');
+        else setError(String(e.message || e));
       }
     }
 
