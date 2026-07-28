@@ -826,17 +826,28 @@ C:\\path\\to\\python -m venv .venv
           </div>
           <!-- 编辑器 -->
           <div class="rb-editor" id="rbEditor" hidden>
-            <div class="rb-toolbar">
-              <div class="rb-model">
-                <label for="rbModel">AI 模型</label>
-                <select id="rbModel" class="rb-select">${modelOptions}</select>
+              <div class="rb-toolbar">
+                <div class="rb-tool-modes">
+                  <span class="rb-mode-label">选区工具</span>
+                  <button class="btn btn--toggle is-active" id="rbModeCrop" type="button">框选</button>
+                  <button class="btn btn--toggle" id="rbModeClick" type="button">智能点选</button>
+                  <select id="rbSamMode" class="rb-select" title="智能点选输出模式" hidden>
+                    <option value="alpha">掩码直接抠图</option>
+                    <option value="fuse">融合 u2net 优化</option>
+                  </select>
+                  <button class="btn btn--ghost" id="rbUndo" type="button" disabled>撤销点</button>
+                  <button class="btn btn--ghost" id="rbClearPts" type="button" disabled>清空点</button>
+                </div>
+                <div class="rb-model">
+                  <label for="rbModel">AI 模型</label>
+                  <select id="rbModel" class="rb-select">${modelOptions}</select>
+                </div>
+                <div class="rb-tool-actions">
+                  <button class="btn btn--primary" id="rbProcess" type="button">开始抠图</button>
+                  <button class="btn btn--secondary" id="rbDownload" type="button" disabled>下载 PNG</button>
+                  <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
+                </div>
               </div>
-              <div class="rb-tool-actions">
-                <button class="btn btn--primary" id="rbProcess" type="button">开始抠图</button>
-                <button class="btn btn--secondary" id="rbDownload" type="button" disabled>下载 PNG</button>
-                <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
-              </div>
-            </div>
             <div class="rb-workspace">
               <div class="rb-panel rb-panel--source">
                 <div class="rb-panel__head">
@@ -846,7 +857,7 @@ C:\\path\\to\\python -m venv .venv
                 <div class="rb-canvas-wrap" id="rbCanvasWrap">
                   <canvas id="rbCanvas" class="rb-canvas"></canvas>
                 </div>
-                <p class="rb-hint">在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。</p>
+                <p class="rb-hint" id="rbHint">在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。</p>
               </div>
               <div class="rb-panel rb-panel--result">
                 <div class="rb-panel__head">
@@ -881,6 +892,41 @@ C:\\path\\to\\python -m venv .venv
     const afterImg = document.getElementById('rbAfter');
     const emptyTip = document.getElementById('rbEmpty');
     const status = document.getElementById('rbStatus');
+    const modeCropBtn = document.getElementById('rbModeCrop');
+    const modeClickBtn = document.getElementById('rbModeClick');
+    const samModeSel = document.getElementById('rbSamMode');
+    const undoBtn = document.getElementById('rbUndo');
+    const clearPtsBtn = document.getElementById('rbClearPts');
+    const hint = document.getElementById('rbHint');
+
+    // 智能点选工具（MobileSAM/TinySAM 点击分割），与框选模式共用同一画布
+    const { SmartClickTool, CoordinateTransformer } = window.SmartClick;
+    const transformer = new CoordinateTransformer();
+    const smartTool = new SmartClickTool({
+      canvas, ctx,
+      getSource: () => sourceImage,
+      transformer,
+      endpoint: '/watermark-remover/api/sam-segment',
+      getImageBase64: () => new Promise((res, rej) => {
+        if (!currentFile) return rej(new Error('无源文件'));
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(currentFile);
+      }),
+      onPreview: (pngUrl) => {
+        afterImg.onload = () => {
+          downloadBtn.disabled = false;
+          emptyTip.style.display = 'none';
+          setStatus('抠图完成 ✔ 可下载透明 PNG，或调整点位重新生成。', 'info');
+        };
+        afterImg.onerror = () => setError('结果图片加载失败，请重试');
+        afterImg.src = pngUrl;
+        currentResult = pngUrl;
+      },
+      onStatus: setStatus,
+      onPointsChange: (n) => { undoBtn.disabled = n === 0; clearPtsBtn.disabled = n === 0; },
+    });
 
     let currentResult = null;
     let currentFileName = 'remove-bg.png';
@@ -928,16 +974,37 @@ C:\\path\\to\\python -m venv .venv
       const maxW = canvasWrap.clientWidth || 600;
       const maxH = Math.min(window.innerHeight * 0.62, 620);
       const iw = sourceImage.naturalWidth, ih = sourceImage.naturalHeight;
-      const scale = Math.min(maxW / iw, maxH / ih, 1);
-      const dw = Math.round(iw * scale), dh = Math.round(ih * scale);
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(dw * dpr);
-      canvas.height = Math.round(dh * dpr);
-      canvas.style.width = dw + 'px';
-      canvas.style.height = dh + 'px';
+      const mode = smartTool.getMode();
+      if (mode === 'click') {
+        // 点选模式：画布填满容器，图片按视图居中，支持缩放/平移
+        transformer.setImageSize(iw, ih);
+        transformer.fit(maxW, maxH);
+        canvas.style.width = maxW + 'px';
+        canvas.style.height = maxH + 'px';
+        canvas.width = Math.round(maxW * dpr);
+        canvas.height = Math.round(maxH * dpr);
+      } else {
+        // 框选模式：画布=适配后的图片尺寸（保持原逻辑）
+        const scale = Math.min(maxW / iw, maxH / ih, 1);
+        const dw = Math.round(iw * scale), dh = Math.round(ih * scale);
+        canvas.style.width = dw + 'px';
+        canvas.style.height = dh + 'px';
+        canvas.width = Math.round(dw * dpr);
+        canvas.height = Math.round(dh * dpr);
+        stage = { scale, ox: 0, oy: 0, dw, dh };
+        // 仅用于 SAM 坐标换算（点选模式才用到）
+        transformer.setImageSize(iw, ih);
+        transformer.fit(maxW, maxH);
+      }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      stage = { scale, ox: 0, oy: 0, dw, dh };
-      draw();
+      redrawActive();
+    }
+
+    // 两种模式共用入口：点选模式交给 SmartClickTool 渲染，框选模式走原 draw()
+    function redrawActive() {
+      if (smartTool.getMode() === 'click') smartTool.redraw();
+      else draw();
     }
 
     function draw() {
@@ -1006,6 +1073,7 @@ C:\\path\\to\\python -m venv .venv
     }
 
     function startDrag(e) {
+      if (smartTool.getMode() === 'click') return; // 点选模式由 SmartClickTool 接管鼠标
       if (!sourceImage) return;
       const rel = eventToRel(e);
       const h = hitHandle(rel);
@@ -1019,7 +1087,7 @@ C:\\path\\to\\python -m venv .venv
         drag = { mode: 'create', start: rel };
       }
       e.preventDefault();
-      draw();
+      redrawActive();
     }
 
     function moveDrag(e) {
@@ -1047,7 +1115,7 @@ C:\\path\\to\\python -m venv .venv
         right = Math.min(1, right); bottom = Math.min(1, bottom);
         crop = { x: left, y: top, w: right - left, h: bottom - top };
       }
-      draw();
+      redrawActive();
       e.preventDefault();
     }
 
@@ -1057,7 +1125,7 @@ C:\\path\\to\\python -m venv .venv
       }
       drag = null;
       clearCropBtn.disabled = !crop;
-      draw();
+      redrawActive();
     }
 
     canvas.addEventListener('mousedown', startDrag);
@@ -1067,9 +1135,10 @@ C:\\path\\to\\python -m venv .venv
     window.addEventListener('mouseup', endDrag);
     window.addEventListener('touchend', endDrag);
     canvas.addEventListener('dblclick', () => {
+      if (smartTool.getMode() === 'click') return;
       crop = null;
       clearCropBtn.disabled = true;
-      draw();
+      redrawActive();
     });
 
     /* ---------- 处理与下载 ---------- */
@@ -1138,8 +1207,28 @@ C:\\path\\to\\python -m venv .venv
     ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-active'); }));
     drop.addEventListener('drop', (e) => processFile(e.dataTransfer.files[0]));
 
-    processBtn.addEventListener('click', runRemoveBg);
-    modelSel.addEventListener('change', () => { if (sourceImage) runRemoveBg(); });
+    // 「开始抠图」按模式分流：点选模式走 SAM 结果输出，框选模式走原 u2net 管线
+    processBtn.addEventListener('click', async () => {
+      if (smartTool.getMode() === 'click') {
+        if (!smartTool.hasMask()) { setError('请先在图上打点（左键保留 / 右键剔除）'); return; }
+        setLoading('正在生成透明 PNG…');
+        processBtn.disabled = true;
+        try {
+          const mode = samModeSel.value;
+          if (mode === 'alpha') await smartTool.applyAsAlpha();
+          else await smartTool.fuseWithU2net(currentFile, '/watermark-remover/api/remove-bg');
+        } catch (e) {
+          setError(String((e && e.message) || e));
+        } finally {
+          processBtn.disabled = false;
+        }
+        return;
+      }
+      runRemoveBg();
+    });
+    modelSel.addEventListener('change', () => {
+      if (sourceImage && smartTool.getMode() === 'crop') runRemoveBg();
+    });
     downloadBtn.addEventListener('click', () => {
       if (!currentResult) return;
       const a = document.createElement('a');
@@ -1147,8 +1236,35 @@ C:\\path\\to\\python -m venv .venv
       a.download = currentFileName;
       a.click();
     });
-    resetBtn.addEventListener('click', reset);
-    clearCropBtn.addEventListener('click', () => { crop = null; clearCropBtn.disabled = true; draw(); });
+    resetBtn.addEventListener('click', () => {
+      if (smartTool) { smartTool.clearAll(); smartTool.setMode('crop'); }
+      modeClickBtn.classList.remove('is-active');
+      modeCropBtn.classList.add('is-active');
+      samModeSel.hidden = true;
+      hint.textContent = '在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。';
+      reset();
+    });
+    clearCropBtn.addEventListener('click', () => {
+      if (smartTool.getMode() === 'click') { smartTool.clearAll(); return; }
+      crop = null; clearCropBtn.disabled = true; redrawActive();
+    });
+
+    // 工具栏：框选 / 智能点选 切换
+    function setMode(next) {
+      const click = next === 'click';
+      smartTool.setMode(next);
+      modeClickBtn.classList.toggle('is-active', click);
+      modeCropBtn.classList.toggle('is-active', !click);
+      samModeSel.hidden = !click;
+      hint.textContent = click
+        ? '左键=保留物体，右键=剔除背景；滚轮缩放，空格+拖拽平移；多次打点可叠加优化；Ctrl+Z 撤销。'
+        : '在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。';
+      fitCanvas();
+    }
+    modeClickBtn.addEventListener('click', () => setMode(smartTool.getMode() === 'click' ? 'crop' : 'click'));
+    modeCropBtn.addEventListener('click', () => { if (smartTool.getMode() === 'click') setMode('crop'); });
+    undoBtn.addEventListener('click', () => smartTool.undo());
+    clearPtsBtn.addEventListener('click', () => smartTool.clearAll());
 
     window.addEventListener('resize', () => { if (sourceImage && !editor.hidden) fitCanvas(); });
 

@@ -1409,6 +1409,22 @@ img { max-width: 100%; display: block; }
 }
 .user-chip__logout:hover { color: var(--text); border-color: var(--accent); }
 
+/* ---------- 智能点选工具栏 ---------- */
+.rb-tool-modes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-right: auto; }
+.rb-mode-label { font-size: .9rem; font-weight: 600; color: var(--text); }
+.rb-tool-modes .rb-select { margin: 0; }
+.btn--toggle {
+  font: inherit; font-weight: 600; font-size: .88rem;
+  color: var(--text); padding: 9px 16px; border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-strong);
+  cursor: pointer; transition: all .2s var(--ease, ease);
+}
+.btn--toggle:hover { transform: translateY(-1px); border-color: var(--accent); }
+.btn--toggle.is-active {
+  color: #042f2a; background: var(--accent-2, #2dd4bf); border-color: var(--accent-2, #2dd4bf);
+  box-shadow: 0 8px 20px -10px var(--accent-2, #2dd4bf);
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }

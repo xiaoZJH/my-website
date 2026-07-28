@@ -72,6 +72,11 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 bp = Blueprint("wm", __name__, url_prefix=BASE_PATH or None)
 
+# 智能点选（Smart Click Matting）：挂载 MobileSAM/TinySAM 点击分割路由
+# 对外经 Node 反代为 /watermark-remover/api/sam-segment
+from sam.sam_service import register_sam
+register_sam(bp)
+
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
@@ -1017,6 +1022,18 @@ def remove_bg():
         # 始终对整图推理：确保模型能看到完整对象，避免用户框选范围不够导致缺尾巴/耳朵
         with _REMOVE_BG_LOCK:
             output_image = remove(input_image, session=session)
+
+        # 智能点选融合：前端传了 SAM 二值 mask 时，用它约束 u2net 的 alpha
+        # （模式2：SAM 掩码作为先验，剔除 u2net 误留的背景、补强弱前景）
+        sam_mask_b64 = request.form.get("sam_mask")
+        if sam_mask_b64:
+            try:
+                from sam.sam_service import apply_sam_mask_to_alpha
+                arr = np.array(output_image)
+                arr[:, :, 3] = apply_sam_mask_to_alpha(arr[:, :, 3], sam_mask_b64)
+                output_image = Image.fromarray(arr)
+            except Exception as _e:
+                app.logger.warning("SAM 融合失败，回退纯 u2net：%s", _e)
 
         # 若画了选区，以选区为硬约束去除背景残留
         if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
