@@ -1,9 +1,9 @@
 // maskRenderer.ts — ③ SAM mask 蒙版渲染（半透明蓝，对齐 WPS 智能点选风格）+ 点位绘制 + 掩码合并
 import type { PromptPoint } from './types';
 
-// WPS 风半透明蓝
-const MASK_COLOR: [number, number, number] = [45, 140, 255];
-const MASK_ALPHA = 120; // 0~255
+// WPS 智能点选风格：半透明橙红蒙版，提示「当前选中区域」
+const MASK_COLOR: [number, number, number] = [255, 90, 60];
+const MASK_ALPHA = 145; // 0~255
 
 export class MaskRenderer {
   private maskCanvas: HTMLCanvasElement;

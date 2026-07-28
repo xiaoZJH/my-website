@@ -97,3 +97,64 @@ export function maskToBase64Png(mask: Uint8Array, w: number, h: number): string 
   ctx.putImageData(img, 0, 0);
   return c.toDataURL('image/png');
 }
+
+/**
+ * 把 remove-bg 返回的透明 PNG dataURL 解码为 0/1 mask。
+ * 用于「智能点选」进入时自动初始化选区。
+ */
+export function decodeAlphaPng(dataUrl: string): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, w, h).data;
+      const out = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) out[i] = d[i * 4 + 3] > 30 ? 1 : 0;
+      resolve(out);
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * 前端 Flood Fill 去除：以 (sx,sy) 为种子，把同属一个前景连通块的所有像素置 0。
+ * 用于 SAM 不可用时，用户点击「误保留区域」做快速去除。
+ */
+export function floodFillRemove(mask: Uint8Array, w: number, h: number, sx: number, sy: number): Uint8Array {
+  const out = mask.slice();
+  const idx = sy * w + sx;
+  if (idx < 0 || idx >= out.length || !out[idx]) return out;
+  const stack: [number, number][] = [[sx, sy]];
+  while (stack.length) {
+    const [x, y] = stack.pop()!;
+    const i = y * w + x;
+    if (x < 0 || x >= w || y < 0 || y >= h || !out[i]) continue;
+    out[i] = 0;
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  return out;
+}
+
+/**
+ * 前端膨胀保留：以 (sx,sy) 为圆心，radius 为半径把圆形区域置 1。
+ * 用于 SAM 不可用时，用户点击「漏检背景」做快速补回。
+ */
+export function dilateAt(mask: Uint8Array, w: number, h: number, sx: number, sy: number, radius = 40): Uint8Array {
+  const out = mask.slice();
+  const r2 = radius * radius;
+  for (let dy = -radius; dy <= radius; dy++) {
+    const y = sy + dy;
+    if (y < 0 || y >= h) continue;
+    for (let dx = -radius; dx <= radius; dx++) {
+      const x = sx + dx;
+      if (x < 0 || x >= w) continue;
+      if (dx * dx + dy * dy <= r2) out[y * w + x] = 1;
+    }
+  }
+  return out;
+}

@@ -26,7 +26,10 @@ var SmartClick = (() => {
     SamClient: () => SamClient,
     SmartClickTool: () => SmartClickTool,
     cropToAlphaBbox: () => cropToAlphaBbox,
+    decodeAlphaPng: () => decodeAlphaPng,
     decodeMaskImage: () => decodeMaskImage,
+    dilateAt: () => dilateAt,
+    floodFillRemove: () => floodFillRemove,
     maskToBase64Png: () => maskToBase64Png,
     maskToTransparentPng: () => maskToTransparentPng
   });
@@ -142,8 +145,8 @@ var SmartClick = (() => {
   };
 
   // public/js/smart-click/maskRenderer.ts
-  var MASK_COLOR = [45, 140, 255];
-  var MASK_ALPHA = 120;
+  var MASK_COLOR = [255, 90, 60];
+  var MASK_ALPHA = 145;
   var MaskRenderer = class {
     maskCanvas;
     maskCtx;
@@ -297,6 +300,53 @@ var SmartClick = (() => {
     ctx.putImageData(img, 0, 0);
     return c.toDataURL("image/png");
   }
+  function decodeAlphaPng(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, w, h).data;
+        const out = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) out[i] = d[i * 4 + 3] > 30 ? 1 : 0;
+        resolve(out);
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+  function floodFillRemove(mask, w, h, sx, sy) {
+    const out = mask.slice();
+    const idx = sy * w + sx;
+    if (idx < 0 || idx >= out.length || !out[idx]) return out;
+    const stack = [[sx, sy]];
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      const i = y * w + x;
+      if (x < 0 || x >= w || y < 0 || y >= h || !out[i]) continue;
+      out[i] = 0;
+      stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+    return out;
+  }
+  function dilateAt(mask, w, h, sx, sy, radius = 40) {
+    const out = mask.slice();
+    const r2 = radius * radius;
+    for (let dy = -radius; dy <= radius; dy++) {
+      const y = sy + dy;
+      if (y < 0 || y >= h) continue;
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = sx + dx;
+        if (x < 0 || x >= w) continue;
+        if (dx * dx + dy * dy <= r2) out[y * w + x] = 1;
+      }
+    }
+    return out;
+  }
 
   // public/js/smart-click/samClient.ts
   var SamClient = class {
@@ -365,6 +415,9 @@ var SmartClick = (() => {
     panStart = null;
     spaceDown = false;
     bound = [];
+    samAvailable = null;
+    // 探测后端 SAM 是否可用
+    autoInited = false;
     constructor(opts) {
       this.opts = opts;
       this.client = new SamClient(opts.endpoint);
@@ -382,13 +435,16 @@ var SmartClick = (() => {
     hasMask() {
       return !!this.mask;
     }
-    /** 切换工具模式；切离 'click' 时自动清除 SAM 点位与蒙版（需求 2.3） */
+    /** 切换工具模式；切离 'click' 时自动清除 SAM 点位与蒙版 */
     setMode(m) {
       if (m === this.mode) return;
       this.mode = m;
       if (m !== "click") {
         this.points.clear();
         this.clearMask();
+        this.autoInited = false;
+      } else {
+        window.setTimeout(() => this.autoInitMask(), 0);
       }
       this.opts.canvas.style.cursor = m === "click" ? "crosshair" : "default";
       this.bindOrUnbind(m === "click");
@@ -424,7 +480,7 @@ var SmartClick = (() => {
     onMouseDown = (e) => {
       if (this.mode !== "click") return;
       const src = this.opts.getSource();
-      if (!src) return;
+      if (!src || !this.mask) return;
       const rect = this.opts.canvas.getBoundingClientRect();
       if (e.button === 1 || e.button === 0 && this.spaceDown) {
         const v = this.opts.transformer.getView();
@@ -433,11 +489,19 @@ var SmartClick = (() => {
         e.preventDefault();
         return;
       }
-      if (e.button !== 0 && e.button !== 2) return;
+      if (e.button !== 0) return;
       const img = this.opts.transformer.screenToImage(e.clientX, e.clientY, rect);
-      const label = e.button === 0 ? 1 : 0;
-      this.points.add({ x: Math.round(img.x), y: Math.round(img.y), label });
-      this.requestSegment();
+      const x = Math.round(img.x), y = Math.round(img.y);
+      if (x < 0 || x >= this.maskW || y < 0 || y >= this.maskH) return;
+      const idx = y * this.maskW + x;
+      const isInside = this.mask[idx] === 1;
+      const label = isInside ? 0 : 1;
+      this.points.add({ x, y, label });
+      if (this.samAvailable === false) {
+        this.localRefine(x, y, label);
+      } else {
+        this.requestSegment(true);
+      }
     };
     onWheel = (e) => {
       if (this.mode !== "click") return;
@@ -470,14 +534,64 @@ var SmartClick = (() => {
     onKeyUp = (e) => {
       if (e.code === "Space") this.spaceDown = false;
     };
+    // ---------- 自动初始化蒙版 ----------
+    /** 用现有 u2net 全图推理生成初始选区；SAM 模型未装时也能用。 */
+    async autoInitMask() {
+      if (this.autoInited) return;
+      const src = this.opts.getSource();
+      const file = this.opts.getUploadFile?.();
+      if (!src || !file) {
+        this.opts.onStatus?.("\u8BF7\u5148\u4E0A\u4F20\u56FE\u7247", "error");
+        return;
+      }
+      this.autoInited = true;
+      this.opts.onStatus?.("\u6B63\u5728\u81EA\u52A8\u8BC6\u522B\u4E3B\u4F53\u2026", "info");
+      try {
+        const form = new FormData();
+        form.append("image", file);
+        form.append("model", "u2netp");
+        const r = await fetch(this.opts.removeBgEndpoint, { method: "POST", body: form });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "\u81EA\u52A8\u8BC6\u522B\u5931\u8D25");
+        const mask = await decodeAlphaPng(j.result_url);
+        this.setMask(mask, src.naturalWidth, src.naturalHeight);
+        this.probeSam();
+        this.opts.onStatus?.(
+          "\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3B\u4F53\uFF1A\u7EA2\u8272\u8499\u7248=\u5F53\u524D\u9009\u4E2D\uFF0C\u70B9\u51FB\u7EA2\u8272\u533A\u57DF\u53EF\u53BB\u9664\uFF0C\u70B9\u51FB\u80CC\u666F\u53EF\u8865\u56DE\u3002",
+          "info"
+        );
+      } catch (err) {
+        this.opts.onStatus?.("\u81EA\u52A8\u8BC6\u522B\u5931\u8D25\uFF1A" + (err?.message || err), "error");
+        this.autoInited = false;
+      }
+    }
+    setMask(mask, w, h) {
+      this.mask = mask;
+      this.maskW = w;
+      this.maskH = h;
+      this.renderer.setMask(this.mask, this.maskW, this.maskH);
+      this.redraw();
+    }
+    async probeSam() {
+      try {
+        const r = await fetch(this.opts.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        this.samAvailable = r.status !== 404;
+        if (!this.samAvailable) {
+          this.opts.onStatus?.("\u68C0\u6D4B\u5230 SAM \u6A21\u578B\u672A\u90E8\u7F72\uFF0C\u5DF2\u5207\u6362\u4E3A\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\u6A21\u5F0F\u3002", "info");
+        }
+      } catch {
+        this.samAvailable = false;
+        this.opts.onStatus?.("SAM \u670D\u52A1\u672A\u5C31\u7EEA\uFF0C\u5DF2\u5207\u6362\u4E3A\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\u6A21\u5F0F\u3002", "info");
+      }
+    }
     // ---------- 业务链路 ----------
     /** 防抖调用 SAM：每次打点（或撤销）后重新预测 */
-    requestSegment() {
+    requestSegment(allowLocalFallback = false) {
       const src = this.opts.getSource();
-      if (!src || this.points.length === 0) return;
+      if (!src || this.points.length === 0 || !this.mask) return;
       if (this.pending) clearTimeout(this.pending);
       this.pending = window.setTimeout(async () => {
-        this.opts.onStatus?.("SAM \u6B63\u5728\u5206\u5272\u2026", "info");
+        this.opts.onStatus?.("\u6B63\u5728\u7CBE\u786E\u4FEE\u6B63\u2026", "info");
         try {
           const imageB64 = this.opts.getImageBase64 ? await this.opts.getImageBase64() : src.src;
           const req = {
@@ -486,27 +600,51 @@ var SmartClick = (() => {
             multimask: false
           };
           const res = await this.client.segment(req);
-          this.mask = await decodeMaskImage(res.mask_image, res.width, res.height);
-          this.maskW = res.width;
-          this.maskH = res.height;
-          this.renderer.setMask(this.mask, this.maskW, this.maskH);
-          this.redraw();
-          this.opts.onStatus?.("\u5DF2\u751F\u6210\u8499\u7248\uFF0C\u53EF\u300C\u5F00\u59CB\u62A0\u56FE\u300D\u6216\u7EE7\u7EED\u6253\u70B9\u4F18\u5316", "info");
+          this.samAvailable = true;
+          this.setMask(await decodeMaskImage(res.mask_image, res.width, res.height), res.width, res.height);
+          this.opts.onStatus?.("\u4FEE\u6B63\u5B8C\u6210\uFF0C\u53EF\u7EE7\u7EED\u70B9\u51FB\u6216\u300C\u5F00\u59CB\u62A0\u56FE\u300D\u3002", "info");
         } catch (err) {
-          this.opts.onStatus?.("SAM \u5206\u5272\u5931\u8D25\uFF1A" + (err?.message || err), "error");
+          const msg = err?.message || String(err);
+          if (msg.includes("404") || msg.includes("NetworkError")) {
+            this.samAvailable = false;
+            if (allowLocalFallback && this.points.length) {
+              const last = this.points.get()[this.points.length - 1];
+              this.localRefine(last.x, last.y, last.label);
+              return;
+            }
+          }
+          this.opts.onStatus?.("\u7CBE\u786E\u4FEE\u6B63\u5931\u8D25\uFF1A" + msg, "error");
         }
       }, 120);
     }
-    /** 撤销上一个点（需求 1.6） */
+    /** SAM 不可用时，用前端形态学做快速修正 */
+    localRefine(x, y, label) {
+      if (!this.mask) return;
+      let next;
+      if (label === 0) {
+        next = floodFillRemove(this.mask, this.maskW, this.maskH, x, y);
+        this.opts.onStatus?.("\u5DF2\u53BB\u9664\u8BE5\u533A\u57DF\uFF08SAM \u672A\u90E8\u7F72\u65F6\u4F7F\u7528\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\uFF09\u3002", "info");
+      } else {
+        next = dilateAt(this.mask, this.maskW, this.maskH, x, y, 60);
+        this.opts.onStatus?.("\u5DF2\u8865\u56DE\u8BE5\u533A\u57DF\uFF08SAM \u672A\u90E8\u7F72\u65F6\u4F7F\u7528\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\uFF09\u3002", "info");
+      }
+      this.setMask(next, this.maskW, this.maskH);
+    }
+    /** 撤销上一个点 */
     undo() {
       this.points.undo();
-      if (this.points.length) this.requestSegment();
-      else this.clearMask();
+      if (this.points.length) {
+        this.requestSegment(true);
+      } else {
+        this.autoInited = false;
+        this.autoInitMask();
+      }
     }
-    /** 清空所有点（需求 1.6） */
+    /** 清空所有点 */
     clearAll() {
       this.points.clear();
-      this.clearMask();
+      this.autoInited = false;
+      this.autoInitMask();
     }
     clearMask() {
       this.mask = null;
@@ -515,7 +653,7 @@ var SmartClick = (() => {
       this.renderer.setMask(new Uint8Array(0), 0, 0);
       this.redraw();
     }
-    /** 重绘：原图 + 蒙版 + 提示点（在 'click' 模式接管渲染） */
+    /** 重绘：原图 + 蒙版 + 提示点 */
     redraw() {
       const src = this.opts.getSource();
       const ctx = this.opts.ctx;
@@ -538,7 +676,7 @@ var SmartClick = (() => {
         );
       }
     }
-    // ---------- 两种输出模式（需求 2.1）----------
+    // ---------- 两种输出模式 ----------
     /** 模式1：mask 直接作为 Alpha 通道 → 透明 PNG → 右侧预览 */
     async applyAsAlpha() {
       const src = this.opts.getSource();
@@ -548,7 +686,7 @@ var SmartClick = (() => {
       this.opts.onPreview(cropped);
       return cropped;
     }
-    /** 模式2：mask 融合进 u2net 管线（上传 mask 二值 PNG 给后端融合优化） */
+    /** 模式2：mask 融合进 u2net 管线 */
     async fuseWithU2net(uploadFile, endpoint, model = "u2net") {
       const src = this.opts.getSource();
       if (!src || !this.mask) return null;

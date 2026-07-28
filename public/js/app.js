@@ -907,6 +907,7 @@ C:\\path\\to\\python -m venv .venv
       getSource: () => sourceImage,
       transformer,
       endpoint: '/watermark-remover/api/sam-segment',
+      removeBgEndpoint: '/watermark-remover/api/remove-bg',
       getImageBase64: () => new Promise((res, rej) => {
         if (!currentFile) return rej(new Error('无源文件'));
         const r = new FileReader();
@@ -914,11 +915,12 @@ C:\\path\\to\\python -m venv .venv
         r.onerror = rej;
         r.readAsDataURL(currentFile);
       }),
+      getUploadFile: () => currentFile,
       onPreview: (pngUrl) => {
         afterImg.onload = () => {
           downloadBtn.disabled = false;
           emptyTip.style.display = 'none';
-          setStatus('抠图完成 ✔ 可下载透明 PNG，或调整点位重新生成。', 'info');
+          setStatus('抠图完成 ✔ 可下载透明 PNG，或继续修正。', 'info');
         };
         afterImg.onerror = () => setError('结果图片加载失败，请重试');
         afterImg.src = pngUrl;
@@ -1257,7 +1259,7 @@ C:\\path\\to\\python -m venv .venv
       modeCropBtn.classList.toggle('is-active', !click);
       samModeSel.hidden = !click;
       hint.textContent = click
-        ? '左键=保留物体，右键=剔除背景；滚轮缩放，空格+拖拽平移；多次打点可叠加优化；Ctrl+Z 撤销。'
+        ? '已自动识别主体（红色蒙版）。点击红色区域=去除，点击背景=补回；滚轮缩放，空格+拖拽平移；Ctrl+Z 撤销。'
         : '在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。';
       fitCanvas();
     }
