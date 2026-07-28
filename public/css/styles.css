@@ -1400,9 +1400,22 @@ img { max-width: 100%; display: block; }
   pointer-events: none; backdrop-filter: blur(4px);
 }
 [data-theme="dark"] .rb-compare__label { background: rgba(0,0,0,.55); color: var(--text); }
-/* 不对比原图时：铺满结果 + 隐藏滑块/原图 */
+/* 不对比原图时：结果图回到正常文档流、自适应铺满，隐藏滑块/原图 */
 .rb-compare:not(.is-split) .rb-compare__before { display: none; }
-.rb-compare:not(.is-split) .rb-compare__after { width: 100% !important; border-right: none; }
+.rb-compare:not(.is-split) .rb-compare__after {
+  position: static;
+  width: auto !important;
+  height: auto;
+  border-right: none;
+}
+.rb-compare:not(.is-split) .rb-compare__after img {
+  position: static;
+  display: block;
+  height: auto;
+  width: auto;
+  max-width: 100%;
+  max-height: 70vh;
+}
 .rb-compare:not(.is-split) .rb-compare__slider { display: none; }
 .rb-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
