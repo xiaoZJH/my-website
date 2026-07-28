@@ -1255,7 +1255,7 @@ img { max-width: 100%; display: block; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- AI 智能抠图 ---------- */
+/* ---------- AI 智能抠图（框选 + 预览） ---------- */
 .rb-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1285,9 +1285,14 @@ img { max-width: 100%; display: block; }
 .rb-drop svg { color: var(--accent); opacity: .85; }
 .rb-drop p { font-size: 1.1rem; font-weight: 600; color: var(--text); margin: 0; }
 .rb-drop span { font-size: .85rem; opacity: .75; }
-.rb-controls {
+
+/* 编辑器布局 */
+.rb-editor { margin-top: var(--sp-5); }
+.rb-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: var(--sp-4); margin-top: var(--sp-5);
+  gap: var(--sp-4); padding: 14px 16px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: var(--sp-4);
 }
 .rb-model { display: flex; align-items: center; gap: 10px; }
 .rb-model label { font-size: .9rem; font-weight: 600; color: var(--text); }
@@ -1303,22 +1308,66 @@ img { max-width: 100%; display: block; }
   background-repeat: no-repeat; background-position: right 12px center;
   cursor: pointer;
 }
-.rb-actions { display: flex; gap: var(--sp-3); }
-.rb-preview { margin-top: var(--sp-5); }
+.rb-tool-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.rb-mini {
+  font: inherit; font-size: .82rem; font-weight: 600; color: var(--text-soft);
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-solid); border: 1px solid var(--border-strong);
+  transition: border-color .2s, color .2s, opacity .2s;
+}
+.rb-mini:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.rb-mini:disabled { opacity: .45; cursor: not-allowed; }
+.btn--secondary {
+  font: inherit; font-weight: 600; font-size: .92rem; color: var(--text);
+  padding: 10px 18px; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--surface-solid); border: 1px solid var(--border-strong);
+  transition: transform .15s var(--ease), border-color .2s, opacity .2s;
+}
+.btn--secondary:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.btn--secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+.rb-workspace {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4);
+}
+.rb-panel {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; display: flex; flex-direction: column; min-width: 0;
+}
+.rb-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rb-panel__title { font-size: .95rem; font-weight: 700; color: var(--text); }
+.rb-toggle {
+  display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--text-soft);
+  cursor: pointer; user-select: none;
+}
+.rb-toggle input { accent-color: var(--accent); }
+.rb-canvas-wrap {
+  position: relative; flex: 1; min-height: 320px;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg) 0 0 / 20px 20px;
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+[data-theme="dark"] .rb-canvas-wrap { background: conic-gradient(#1f2937 90deg, #111827 90deg 180deg, #1f2937 180deg 270deg, #111827 270deg) 0 0 / 20px 20px; }
+.rb-canvas {
+  max-width: 100%; max-height: 100%; cursor: crosshair; touch-action: none;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); border-radius: 4px;
+}
+.rb-hint { font-size: .82rem; color: var(--text-soft); line-height: 1.5; margin: 10px 2px 0; }
+
+.rb-preview-wrap {
+  flex: 1; min-height: 320px; display: flex; align-items: center; justify-content: center;
+}
 .rb-compare {
-  position: relative; display: inline-block; max-width: 100%;
-  border-radius: var(--radius);
+  position: relative; display: inline-block; max-width: 100%; max-height: 100%;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background:
     conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg) 0 0 / 20px 20px;
   box-shadow: var(--shadow-md);
-  user-select: none; touch-action: none;
-  line-height: 0;
+  user-select: none; touch-action: none; line-height: 0; overflow: hidden;
 }
 [data-theme="dark"] .rb-compare { background: conic-gradient(#1f2937 90deg, #111827 90deg 180deg, #1f2937 180deg 270deg, #111827 270deg) 0 0 / 20px 20px; }
-.rb-compare__before {
-  display: block; max-width: 100%; height: auto; pointer-events: none;
-}
+.rb-compare__before { display: block; max-width: 100%; max-height: 70vh; height: auto; pointer-events: none; }
 .rb-compare__after {
   position: absolute; top: 0; left: 0; bottom: 0; width: 50%; overflow: hidden;
   border-right: 1px solid rgba(255,255,255,.4);
@@ -1339,8 +1388,7 @@ img { max-width: 100%; display: block; }
 .rb-compare__thumb {
   width: 34px; height: 34px; border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 4px 14px rgba(0,0,0,.3);
-  display: grid; place-items: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3); display: grid; place-items: center;
 }
 .rb-compare__thumb::before {
   content: '‹›'; font-size: 14px; font-weight: 700; color: #fff; letter-spacing: 2px;
@@ -1352,12 +1400,26 @@ img { max-width: 100%; display: block; }
   pointer-events: none; backdrop-filter: blur(4px);
 }
 [data-theme="dark"] .rb-compare__label { background: rgba(0,0,0,.55); color: var(--text); }
+/* 不对比原图时：铺满结果 + 隐藏滑块/原图 */
+.rb-compare:not(.is-split) .rb-compare__before { display: none; }
+.rb-compare:not(.is-split) .rb-compare__after { width: 100% !important; border-right: none; }
+.rb-compare:not(.is-split) .rb-compare__slider { display: none; }
+.rb-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: .9rem; font-weight: 600; color: var(--text-soft); pointer-events: none;
+  background: rgba(148,163,184,.08);
+}
+
 .rb-status { margin-top: var(--sp-4); font-size: .92rem; }
 .rb-status--error { color: #ef4444; }
 .rb-status--info { color: var(--text-soft); display: flex; align-items: center; gap: 8px; }
 .rb-banner { padding: 12px 16px; border-radius: 12px; margin-bottom: var(--sp-4); font-size: .92rem; line-height: 1.5; }
 .rb-banner--warning { background: rgba(239, 68, 68, .08); color: #ef4444; border: 1px solid rgba(239, 68, 68, .2); }
 .rb-select option:disabled { color: var(--text-soft); opacity: .55; font-style: italic; }
+
+@media (max-width: 860px) {
+  .rb-workspace { grid-template-columns: 1fr; }
+}
 
 /* ---------- Auth（登录 / 注册） ---------- */
 .auth-area { display: flex; align-items: center; }

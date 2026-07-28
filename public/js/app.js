@@ -779,7 +779,7 @@ C:\\path\\to\\python -m venv .venv
     }
   }
 
-  /* ---------- AI 智能抠图（本地 Flask sidecar） ---------- */
+  /* ---------- AI 智能抠图（本地 Flask sidecar，支持框选 + 实时预览） ---------- */
   async function renderRemoveBg() {
     // 先查询后端哪些模型已在本地缓存，未就绪的模型禁用，避免触发 GitHub 下载超时
     let modelStatus = {};
@@ -810,11 +810,12 @@ C:\\path\\to\\python -m venv .venv
     view.innerHTML = `
       <section class="section tool-fullpage">
         <div class="section__head">
-          <div><h2 class="section__title">AI 智能抠图</h2><div class="section__sub">一键移除背景，导出透明 PNG · 本地运行</div></div>
+          <div><h2 class="section__title">AI 智能抠图</h2><div class="section__sub">框选保留区域，精准抠出主体 · 导出透明 PNG · 本地运行</div></div>
           <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
         </div>
-          <div class="rb-card reveal">
+        <div class="rb-card reveal">
           ${noModelBanner}
+          <!-- 上传区 -->
           <div class="rb-upload" id="rbUpload">
             <input type="file" id="rbFile" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
             <div class="rb-drop" id="rbDrop" tabindex="0" role="button" aria-label="上传图片">
@@ -823,25 +824,48 @@ C:\\path\\to\\python -m venv .venv
               <span>支持 JPG / PNG / WebP / BMP，建议小于 10MB</span>
             </div>
           </div>
-          <div class="rb-controls" id="rbControls" hidden>
-            <div class="rb-model">
-              <label for="rbModel">AI 模型</label>
-              <select id="rbModel" class="rb-select">${modelOptions}</select>
-            </div>
-            <div class="rb-actions">
-              <button class="btn btn--primary" id="rbDownload" type="button">下载透明 PNG</button>
-              <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
-            </div>
-          </div>
-          <div class="rb-preview" id="rbPreview" hidden>
-            <div class="rb-compare" id="rbCompare">
-              <img class="rb-compare__before" id="rbBefore" alt="原图" draggable="false">
-              <div class="rb-compare__after" id="rbAfterWrap" aria-label="抠图结果">
-                <img id="rbAfter" alt="抠图结果" draggable="false">
+          <!-- 编辑器 -->
+          <div class="rb-editor" id="rbEditor" hidden>
+            <div class="rb-toolbar">
+              <div class="rb-model">
+                <label for="rbModel">AI 模型</label>
+                <select id="rbModel" class="rb-select">${modelOptions}</select>
               </div>
-              <div class="rb-compare__slider" id="rbSlider" aria-label="对比滑块" tabindex="0">
-                <div class="rb-compare__thumb"></div>
-                <span class="rb-compare__label">滑动对比</span>
+              <div class="rb-tool-actions">
+                <button class="btn btn--primary" id="rbProcess" type="button">开始抠图</button>
+                <button class="btn btn--secondary" id="rbDownload" type="button" disabled>下载 PNG</button>
+                <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
+              </div>
+            </div>
+            <div class="rb-workspace">
+              <div class="rb-panel rb-panel--source">
+                <div class="rb-panel__head">
+                  <span class="rb-panel__title">原图</span>
+                  <button class="rb-mini" id="rbClearCrop" type="button" disabled>清除选区</button>
+                </div>
+                <div class="rb-canvas-wrap" id="rbCanvasWrap">
+                  <canvas id="rbCanvas" class="rb-canvas"></canvas>
+                </div>
+                <p class="rb-hint">在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。</p>
+              </div>
+              <div class="rb-panel rb-panel--result">
+                <div class="rb-panel__head">
+                  <span class="rb-panel__title">预览</span>
+                  <label class="rb-toggle"><input type="checkbox" id="rbCompareToggle" checked> 对比原图</label>
+                </div>
+                <div class="rb-preview-wrap" id="rbPreviewWrap">
+                  <div class="rb-compare" id="rbCompare">
+                    <img class="rb-compare__before" id="rbBefore" alt="原图" draggable="false">
+                    <div class="rb-compare__after" id="rbAfterWrap" aria-label="抠图结果">
+                      <img id="rbAfter" alt="抠图结果" draggable="false">
+                    </div>
+                    <div class="rb-compare__slider" id="rbSlider" aria-label="对比滑块" tabindex="0">
+                      <div class="rb-compare__thumb"></div>
+                      <span class="rb-compare__label">滑动对比</span>
+                    </div>
+                    <div class="rb-empty" id="rbEmpty">尚未抠图</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -853,20 +877,32 @@ C:\\path\\to\\python -m venv .venv
     const upload = document.getElementById('rbUpload');
     const fileInput = document.getElementById('rbFile');
     const drop = document.getElementById('rbDrop');
-    const controls = document.getElementById('rbControls');
-    const preview = document.getElementById('rbPreview');
+    const editor = document.getElementById('rbEditor');
     const modelSel = document.getElementById('rbModel');
+    const processBtn = document.getElementById('rbProcess');
     const downloadBtn = document.getElementById('rbDownload');
     const resetBtn = document.getElementById('rbReset');
+    const clearCropBtn = document.getElementById('rbClearCrop');
+    const canvas = document.getElementById('rbCanvas');
+    const canvasWrap = document.getElementById('rbCanvasWrap');
+    const ctx = canvas.getContext('2d');
     const beforeImg = document.getElementById('rbBefore');
     const afterImg = document.getElementById('rbAfter');
     const afterWrap = document.getElementById('rbAfterWrap');
     const slider = document.getElementById('rbSlider');
+    const rbCompare = document.getElementById('rbCompare');
+    const compareToggle = document.getElementById('rbCompareToggle');
+    const emptyTip = document.getElementById('rbEmpty');
     const status = document.getElementById('rbStatus');
 
     let currentResult = null;
     let currentFileName = 'remove-bg.png';
-    let isDragging = false;
+    let sourceImage = null;          // 原图 HTMLImageElement
+    let crop = null;                 // 选区 {x,y,w,h} 相对原图 0-1；null=全图
+    let stage = { scale: 1, ox: 0, oy: 0, dw: 0, dh: 0 }; // canvas 上的绘制区域（CSS px）
+    let drag = null;                 // 拖拽状态
+    const HANDLE = 9;                // 手柄半径（CSS px）
+    const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
     function setStatus(html, type = 'info') {
       status.className = 'rb-status rb-status--' + type;
@@ -876,112 +912,261 @@ C:\\path\\to\\python -m venv .venv
 
     function setLoading(msg) {
       setStatus('<span class="spinner-sm"></span> ' + esc(msg), 'info');
-      controls.hidden = true;
-      preview.hidden = true;
+      processBtn.disabled = true;
     }
 
     function setError(msg) {
       setStatus('⚠ ' + esc(msg), 'error');
+      processBtn.disabled = false;
     }
 
     function reset() {
       currentResult = null;
       currentFileName = 'remove-bg.png';
+      crop = null;
+      sourceImage = null;
       fileInput.value = '';
       beforeImg.src = '';
       afterImg.src = '';
+      downloadBtn.disabled = true;
+      clearCropBtn.disabled = true;
       upload.hidden = false;
-      controls.hidden = true;
-      preview.hidden = true;
+      editor.hidden = true;
       status.hidden = true;
       setComparePosition(50);
     }
 
+    /* ---------- 画布绘制与选区交互 ---------- */
+    function fitCanvas() {
+      if (!sourceImage) return;
+      const maxW = canvasWrap.clientWidth || 600;
+      const maxH = Math.min(window.innerHeight * 0.62, 620);
+      const iw = sourceImage.naturalWidth, ih = sourceImage.naturalHeight;
+      const scale = Math.min(maxW / iw, maxH / ih, 1);
+      const dw = Math.round(iw * scale), dh = Math.round(ih * scale);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(dw * dpr);
+      canvas.height = Math.round(dh * dpr);
+      canvas.style.width = dw + 'px';
+      canvas.style.height = dh + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      stage = { scale, ox: 0, oy: 0, dw, dh };
+      draw();
+    }
+
+    function draw() {
+      if (!sourceImage) return;
+      const { dw, dh } = stage;
+      ctx.clearRect(0, 0, dw, dh);
+      ctx.drawImage(sourceImage, 0, 0, dw, dh);
+      if (!crop) return;
+      // 选区外半透明遮罩（四个矩形拼出区域外）
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+      const rx = crop.x * dw, ry = crop.y * dh, rw = crop.w * dw, rh = crop.h * dh;
+      ctx.fillRect(0, 0, dw, ry);                      // 上
+      ctx.fillRect(0, ry + rh, dw, dh - (ry + rh));    // 下
+      ctx.fillRect(0, ry, rx, rh);                     // 左
+      ctx.fillRect(rx + rw, ry, dw - (rx + rw), rh);   // 右
+      // 选区边框
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.setLineDash([]);
+      // 手柄
+      const centers = handleCenters();
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.lineWidth = 2;
+      for (const c in centers) {
+        ctx.beginPath();
+        ctx.rect(centers[c].x - HANDLE / 2, centers[c].y - HANDLE / 2, HANDLE, HANDLE);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    function handleCenters() {
+      const { dw, dh } = stage;
+      const rx = crop.x * dw, ry = crop.y * dh, rw = crop.w * dw, rh = crop.h * dh;
+      return {
+        nw: { x: rx, y: ry }, n: { x: rx + rw / 2, y: ry }, ne: { x: rx + rw, y: ry },
+        e: { x: rx + rw, y: ry + rh / 2 }, se: { x: rx + rw, y: ry + rh }, s: { x: rx + rw / 2, y: ry + rh },
+        sw: { x: rx, y: ry + rh }, w: { x: rx, y: ry + rh / 2 },
+      };
+    }
+
+    function eventToRel(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+      return { x: cx / rect.width, y: cy / rect.height };
+    }
+
+    function hitHandle(rel) {
+      if (!crop) return null;
+      const centers = handleCenters();
+      for (const k of HANDLES) {
+        const c = centers[k];
+        if (Math.abs(rel.x * stage.dw - c.x) <= HANDLE + 3 && Math.abs(rel.y * stage.dh - c.y) <= HANDLE + 3) {
+          return k;
+        }
+      }
+      return null;
+    }
+
+    function insideCrop(rel) {
+      return crop && rel.x >= crop.x && rel.x <= crop.x + crop.w && rel.y >= crop.y && rel.y <= crop.y + crop.h;
+    }
+
+    function startDrag(e) {
+      if (!sourceImage) return;
+      const rel = eventToRel(e);
+      const h = hitHandle(rel);
+      if (h) {
+        drag = { mode: 'resize', handle: h, start: rel, orig: { ...crop } };
+      } else if (insideCrop(rel)) {
+        drag = { mode: 'move', start: rel, orig: { ...crop } };
+      } else {
+        // 新建选区
+        crop = { x: rel.x, y: rel.y, w: 0, h: 0 };
+        drag = { mode: 'create', start: rel };
+      }
+      e.preventDefault();
+      draw();
+    }
+
+    function moveDrag(e) {
+      if (!drag) return;
+      const rel = eventToRel(e);
+      if (drag.mode === 'create') {
+        const x = Math.min(drag.start.x, rel.x), y = Math.min(drag.start.y, rel.y);
+        const w = Math.abs(rel.x - drag.start.x), h = Math.abs(rel.y - drag.start.y);
+        crop = { x: Math.max(0, x), y: Math.max(0, y), w: Math.min(1 - x, w), h: Math.min(1 - y, h) };
+      } else if (drag.mode === 'move') {
+        const dx = rel.x - drag.start.x, dy = rel.y - drag.start.y;
+        let x = drag.orig.x + dx, y = drag.orig.y + dy;
+        x = Math.max(0, Math.min(1 - drag.orig.w, x));
+        y = Math.max(0, Math.min(1 - drag.orig.h, y));
+        crop = { x, y, w: drag.orig.w, h: drag.orig.h };
+      } else if (drag.mode === 'resize') {
+        let o = drag.orig;
+        let left = o.x, top = o.y, right = o.x + o.w, bottom = o.y + o.h;
+        const kh = drag.handle;
+        if (kh.includes('w')) left = Math.min(rel.x, right - 0.02);
+        if (kh.includes('e')) right = Math.max(rel.x, left + 0.02);
+        if (kh.includes('n')) top = Math.min(rel.y, bottom - 0.02);
+        if (kh.includes('s')) bottom = Math.max(rel.y, top + 0.02);
+        left = Math.max(0, left); top = Math.max(0, top);
+        right = Math.min(1, right); bottom = Math.min(1, bottom);
+        crop = { x: left, y: top, w: right - left, h: bottom - top };
+      }
+      draw();
+      e.preventDefault();
+    }
+
+    function endDrag() {
+      if (drag && drag.mode === 'create' && (!crop || crop.w < 0.01 || crop.h < 0.01)) {
+        crop = null; // 太小的点击视为取消
+      }
+      drag = null;
+      clearCropBtn.disabled = !crop;
+      draw();
+    }
+
+    canvas.addEventListener('mousedown', startDrag);
+    canvas.addEventListener('touchstart', startDrag, { passive: false });
+    window.addEventListener('mousemove', moveDrag);
+    window.addEventListener('touchmove', moveDrag, { passive: false });
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchend', endDrag);
+    canvas.addEventListener('dblclick', () => {
+      crop = null;
+      clearCropBtn.disabled = true;
+      draw();
+    });
+
+    /* ---------- 预览对比 ---------- */
     function setComparePosition(pct) {
       pct = Math.max(2, Math.min(98, pct));
       afterWrap.style.width = pct + '%';
       slider.style.left = pct + '%';
     }
-
     function updateCompareFromEvent(e) {
       const rect = rbCompare.getBoundingClientRect();
       const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       setComparePosition((x / rect.width) * 100);
     }
+    let isDragging = false;
+    slider.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); updateCompareFromEvent(e); });
+    slider.addEventListener('touchstart', (e) => { isDragging = true; updateCompareFromEvent(e); }, { passive: false });
+    rbCompare.addEventListener('click', (e) => { if (e.target !== slider && !slider.contains(e.target)) updateCompareFromEvent(e); });
+    compareToggle.addEventListener('change', () => {
+      rbCompare.classList.toggle('is-split', compareToggle.checked);
+    });
+    rbCompare.classList.toggle('is-split', compareToggle.checked);
 
+    /* ---------- 处理与下载 ---------- */
     async function processFile(file) {
       if (!file) return;
       const valid = /image\/(png|jpeg|jpg|webp|bmp)/i.test(file.type);
-      if (!valid) {
-        setError('不支持的图片格式，请上传 JPG / PNG / WebP / BMP');
-        return;
-      }
-      if (file.size > 50 * 1024 * 1024) {
-        setError('图片过大，建议压缩到 10MB 以内');
-        return;
-      }
-      currentFileName = (file.name.replace(/\.[^.]+$/, '') || 'remove-bg') + '.png';
-      upload.hidden = true;
-      setLoading('AI 正在识别前景并移除背景，首次使用会自动下载模型…');
+      if (!valid) { setError('不支持的图片格式，请上传 JPG / PNG / WebP / BMP'); return; }
+      if (file.size > 50 * 1024 * 1024) { setError('图片过大，建议压缩到 10MB 以内'); return; }
 
+      currentFileName = (file.name.replace(/\.[^.]+$/, '') || 'remove-bg') + '.png';
+      sourceImage = await new Promise((res) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.src = URL.createObjectURL(file);
+      });
+      upload.hidden = true;
+      editor.hidden = false;
+      crop = null;
+      clearCropBtn.disabled = true;
+      fitCanvas();
+      beforeImg.src = sourceImage.src;
+      afterImg.src = '';
+      emptyTip.style.display = '';
+      setStatus('已加载原图。框选要保留的区域后，点击「开始抠图」。', 'info');
+    }
+
+    async function runRemoveBg() {
+      const file = fileInput.files[0];
+      if (!file || !sourceImage) return;
+      setLoading('AI 正在识别前景并移除背景，首次使用会自动下载模型…');
       const form = new FormData();
       form.append('image', file);
       form.append('model', modelSel.value);
+      if (crop) form.append('crop', JSON.stringify([crop.x, crop.y, crop.w, crop.h]));
 
       try {
         const r = await fetch('/watermark-remover/api/remove-bg', { method: 'POST', body: form });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || '处理失败');
         currentResult = j.result_url;
-        beforeImg.src = URL.createObjectURL(file);
         afterImg.src = j.result_url;
-
-        let loaded = 0;
-        function onImageLoad() {
-          loaded++;
-          if (loaded >= 2) {
-            setComparePosition(50);
-            setStatus('', 'info');
-            controls.hidden = false;
-            preview.hidden = false;
-          }
-        }
-        beforeImg.onload = onImageLoad;
-        afterImg.onload = onImageLoad;
-        if (beforeImg.complete) onImageLoad();
-        if (afterImg.complete) onImageLoad();
+        afterImg.onload = () => {
+          setStatus('抠图完成 ✔ 可下载透明 PNG，或调整选区重新抠图。', 'info');
+          processBtn.disabled = false;
+          downloadBtn.disabled = false;
+          emptyTip.style.display = 'none';
+        };
+        if (afterImg.complete) afterImg.onload();
       } catch (e) {
         setError(String(e.message || e));
-        upload.hidden = false;
       }
     }
 
+    /* ---------- 绑定 ---------- */
     drop.addEventListener('click', () => fileInput.click());
     drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
     fileInput.addEventListener('change', () => processFile(fileInput.files[0]));
-
-    ['dragenter', 'dragover'].forEach((ev) => {
-      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('is-active'); });
-    });
-    ['dragleave', 'drop'].forEach((ev) => {
-      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-active'); });
-    });
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('is-active'); }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-active'); }));
     drop.addEventListener('drop', (e) => processFile(e.dataTransfer.files[0]));
 
-    const rbCompare = document.getElementById('rbCompare');
-    slider.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); updateCompareFromEvent(e); });
-    slider.addEventListener('touchstart', (e) => { isDragging = true; updateCompareFromEvent(e); }, { passive: false });
-    window.addEventListener('mousemove', (e) => { if (isDragging) updateCompareFromEvent(e); });
-    window.addEventListener('touchmove', (e) => { if (isDragging) { e.preventDefault(); updateCompareFromEvent(e); } }, { passive: false });
-    window.addEventListener('mouseup', () => isDragging = false);
-    window.addEventListener('touchend', () => isDragging = false);
-    rbCompare.addEventListener('click', (e) => { if (e.target !== slider && !slider.contains(e.target)) updateCompareFromEvent(e); });
-
-    modelSel.addEventListener('change', () => {
-      const file = fileInput.files[0];
-      if (file) processFile(file);
-    });
-
+    processBtn.addEventListener('click', runRemoveBg);
+    modelSel.addEventListener('change', () => { if (sourceImage) runRemoveBg(); });
     downloadBtn.addEventListener('click', () => {
       if (!currentResult) return;
       const a = document.createElement('a');
@@ -989,12 +1174,14 @@ C:\\path\\to\\python -m venv .venv
       a.download = currentFileName;
       a.click();
     });
-
     resetBtn.addEventListener('click', reset);
+    clearCropBtn.addEventListener('click', () => { crop = null; clearCropBtn.disabled = true; draw(); });
+
+    window.addEventListener('resize', () => { if (sourceImage && !editor.hidden) fitCanvas(); });
 
     activeCleanup = () => {
       isDragging = false;
-      if (beforeImg.src && beforeImg.src.startsWith('blob:')) URL.revokeObjectURL(beforeImg.src);
+      if (sourceImage && sourceImage.src.startsWith('blob:')) URL.revokeObjectURL(sourceImage.src);
     };
   }
 

@@ -852,7 +852,7 @@ def remove_bg_models_status():
 
 @bp.route("/api/remove-bg", methods=["POST"])
 def remove_bg():
-    """AI 抠图：接收图片，返回透明背景 PNG（data URI）。"""
+    """AI 抠图：接收图片与可选选区，返回透明背景 PNG（data URI）。"""
     if "image" not in request.files:
         return jsonify({"ok": False, "error": "缺少图片"}), 400
     image_file = request.files["image"]
@@ -880,14 +880,51 @@ def remove_bg():
         from rembg import remove, new_session
         from PIL import Image
         import io
+        import json
 
         input_data = image_file.read()
         input_image = Image.open(io.BytesIO(input_data)).convert("RGBA")
+        W, H = input_image.size
+
+        # 解析可选选区（相对原图坐标 0-1）
+        crop = request.form.get("crop", "").strip()
+        crop_box = None
+        if crop:
+            try:
+                arr = json.loads(crop)
+                if isinstance(arr, list) and len(arr) == 4:
+                    # 若后两项 <=1 视为 [x, y, w, h]；否则视为 [x1, y1, x2, y2]
+                    if arr[2] <= 1 and arr[3] <= 1:
+                        x1 = max(0.0, float(arr[0]))
+                        y1 = max(0.0, float(arr[1]))
+                        x2 = min(1.0, x1 + float(arr[2]))
+                        y2 = min(1.0, y1 + float(arr[3]))
+                    else:
+                        x1, y1, x2, y2 = map(float, arr)
+                        x1, x2 = max(0.0, min(x1, x2)), min(1.0, max(x1, x2))
+                        y1, y2 = max(0.0, min(y1, y2)), min(1.0, max(y1, y2))
+                    crop_box = (
+                        int(round(x1 * W)),
+                        int(round(y1 * H)),
+                        int(round(x2 * W)),
+                        int(round(y2 * H)),
+                    )
+            except Exception:
+                crop_box = None
+
         session = _REMOVE_BG_SESSIONS.get(model)
         if session is None:
             session = new_session(model)
             _REMOVE_BG_SESSIONS[model] = session
-        output_image = remove(input_image, session=session)
+
+        # 若选区有效且非全图，则仅对 ROI 抠图后贴回原尺寸透明画布
+        if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
+            roi = input_image.crop(crop_box)
+            roi_output = remove(roi, session=session)
+            output_image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            output_image.paste(roi_output, (crop_box[0], crop_box[1]), roi_output)
+        else:
+            output_image = remove(input_image, session=session)
 
         buf = io.BytesIO()
         output_image.save(buf, format="PNG", optimize=True)
@@ -900,6 +937,7 @@ def remove_bg():
             "width": int(output_image.width),
             "height": int(output_image.height),
             "model": model,
+            "crop": crop,
         })
     except Exception as e:
         return jsonify({"ok": False, "error": f"抠图处理失败：{str(e)}"}), 500
