@@ -935,100 +935,79 @@ def remove_bg():
             y2 = min(image.height, y2 + padding)
             return image.crop((x1, y1, x2, y2))
 
-        # 若用户画了选区，只保留与选区重叠的前景连通块；
-        # 这样框住「猫身子」就能抠出完整猫（含尾巴、耳朵），同时排除同框的狗/其他主体。
-        # 对 rembg 容易产生的半透明背景噪声，使用 OTSU + 形态学清理。
-        def keep_components_overlapping_crop(image, box, min_alpha=15):
-            arr = np.array(image)
+        # 用户画了选区时，以选区为硬约束清理背景：
+        # 1) 框外直接透明（带羽化），彻底去除建筑/天空等大面积残留；
+        # 2) 框内用 OTSU + 连通块分析只保留最中心/最大的主体块，避免框内误保留小噪声。
+        def apply_crop_constraint(image, box, fade_px=5, roi_pad=30):
+            arr = np.array(image).astype(np.float32)
             if arr.ndim < 3 or arr.shape[2] < 4:
                 return image
-            alpha = arr[:, :, 3].astype(np.float32)
+            alpha = arr[:, :, 3]
             h, w = alpha.shape
             cx1, cy1, cx2, cy2 = box
 
-            # 1) 自适应二值化，自动分离半透明背景噪声
-            alpha_u8 = np.clip(alpha, 0, 255).astype(np.uint8)
-            non_zero = alpha_u8[alpha_u8 > 0]
-            if non_zero.size < 50 or int(alpha_u8.max()) <= min_alpha:
-                return image
-            _, binary = cv2.threshold(alpha_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-            # 2) 形态学：闭运算连接断裂的细部（尾巴、发丝、腿），开运算去除小噪点
-            kernel = np.ones((3, 3), np.uint8)
-            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
-
-            # 3) 连通块分析
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-            if num_labels <= 1:
-                return image
-
-            # 4) 计算每个连通块与 crop 框的实际像素重叠
-            crop_mask = np.zeros((h, w), np.uint8)
-            crop_mask[max(0, cy1):min(h, cy2), max(0, cx1):min(w, cx2)] = 255
-
-            candidates = []
-            for i in range(1, num_labels):
-                area = int(stats[i, cv2.CC_STAT_AREA])
-                if area < 80:
-                    continue
-                comp = (labels == i).astype(np.uint8) * 255
-                overlap = int(cv2.bitwise_and(comp, crop_mask).sum() / 255)
-                if overlap <= 0:
-                    continue
-                # 重叠比例：避免超大背景块只因少量重叠被保留
-                overlap_ratio = overlap / max(area, 1)
-                # 中心距离：越靠近 crop 框中心越优先
-                x = int(stats[i, cv2.CC_STAT_LEFT])
-                y = int(stats[i, cv2.CC_STAT_TOP])
-                bw = int(stats[i, cv2.CC_STAT_WIDTH])
-                bh = int(stats[i, cv2.CC_STAT_HEIGHT])
-                cx, cy = x + bw / 2, y + bh / 2
-                crop_cx, crop_cy = (cx1 + cx2) / 2, (cy1 + cy2) / 2
-                dist = ((cx - crop_cx) ** 2 + (cy - crop_cy) ** 2) ** 0.5
-                candidates.append((overlap, overlap_ratio, -dist, i, area))
-
-            if not candidates:
-                return image
-
-            # 5) 排序：重叠像素多、重叠比例高、距离框中心近
-            candidates.sort(reverse=True, key=lambda x: (x[0], x[1], x[2]))
-
-            # 6) 保留所有与 crop 框有实质重叠的连通块，但过滤掉超大背景块
-            keep_mask = np.zeros((h, w), np.uint8)
-            total_area = 0
-            max_total_area = h * w * 0.30  # 最多保留 30% 图像面积
-            for overlap, overlap_ratio, _dist, i, area in candidates:
-                if total_area + area > max_total_area:
-                    break
-                # 超大块但重叠比例很小：视为背景，跳过
-                if area > 5000 and overlap_ratio < 0.03:
-                    continue
-                keep_mask[labels == i] = 255
-                total_area += area
-
-            if keep_mask.sum() == 0:
-                return image
-
-            # 7) 大幅膨胀保留 mask，确保低 alpha 边缘（丝袜/发丝/尾巴）被包含
-            keep_mask = cv2.dilate(keep_mask, np.ones((15, 15), np.uint8), iterations=2)
-
-            # 8) 应用 mask：保留 mask 内原始 alpha（不破坏半透明细节），mask 外清零
-            # 同时，对 crop 框外且 alpha 较低的噪声做二次抑制
-            feather = 5
-            dist_in = cv2.distanceTransform(keep_mask, cv2.DIST_L2, 5)
-            weight = np.clip(dist_in / feather, 0, 1)
-            new_alpha = alpha * weight
-
+            # ---- A. 空间硬约束：框内保留，框外按距离 fade_px 线性衰减到 0 ----
             Y, X = np.ogrid[:h, :w]
-            inside_crop = (X >= cx1) & (X < cx2) & (Y >= cy1) & (Y < cy2)
-            outside_mask = keep_mask == 0
-            # 框外低 alpha（<80）直接清零，进一步去除半透明背景残影
-            suppress = outside_mask & (~inside_crop) & (alpha < 80)
-            new_alpha[suppress] = 0
+            dx = np.maximum(np.maximum(cx1 - X, 0), X - (cx2 - 1))
+            dy = np.maximum(np.maximum(cy1 - Y, 0), Y - (cy2 - 1))
+            dist = np.sqrt(dx.astype(np.float32) ** 2 + dy.astype(np.float32) ** 2)
+            spatial_weight = np.clip(1 - dist / fade_px, 0, 1)
 
-            arr[:, :, 3] = new_alpha.astype(np.uint8)
-            return Image.fromarray(arr)
+            # ---- B. 框内主体过滤：只保留最大/最靠近框中心的连通块 ----
+            roi_x1 = max(0, cx1 - roi_pad)
+            roi_y1 = max(0, cy1 - roi_pad)
+            roi_x2 = min(w, cx2 + roi_pad)
+            roi_y2 = min(h, cy2 + roi_pad)
+            roi_alpha = alpha[roi_y1:roi_y2, roi_x1:roi_x2].copy()
+            roi_alpha_u8 = np.clip(roi_alpha, 0, 255).astype(np.uint8)
+            non_zero = roi_alpha_u8[roi_alpha_u8 > 0]
+            if non_zero.size >= 50 and int(roi_alpha_u8.max()) > 30:
+                _, binary = cv2.threshold(roi_alpha_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                kernel = np.ones((3, 3), np.uint8)
+                binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+                binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+                num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+                if num_labels > 1:
+                    crop_cx = (cx1 + cx2) / 2 - roi_x1
+                    crop_cy = (cy1 + cy2) / 2 - roi_y1
+                    candidates = []
+                    for i in range(1, num_labels):
+                        area = int(stats[i, cv2.CC_STAT_AREA])
+                        if area < 80:
+                            continue
+                        x = int(stats[i, cv2.CC_STAT_LEFT])
+                        y = int(stats[i, cv2.CC_STAT_TOP])
+                        bw = int(stats[i, cv2.CC_STAT_WIDTH])
+                        bh = int(stats[i, cv2.CC_STAT_HEIGHT])
+                        cx, cy = x + bw / 2, y + bh / 2
+                        dist_to_center = ((cx - crop_cx) ** 2 + (cy - crop_cy) ** 2) ** 0.5
+                        # 优先面积大、距离中心近的块
+                        candidates.append((area, -dist_to_center, i))
+                    if candidates:
+                        candidates.sort(reverse=True)
+                        best_i = candidates[0][2]
+                        keep = np.zeros_like(binary)
+                        keep[labels == best_i] = 255
+                        # 轻微膨胀保留边缘半透明发丝/丝袜
+                        keep = cv2.dilate(keep, np.ones((7, 7), np.uint8), iterations=1)
+                        roi_alpha = roi_alpha * (keep.astype(np.float32) / 255.0)
+                        alpha[roi_y1:roi_y2, roi_x1:roi_x2] = roi_alpha
+
+            # ---- C. 应用空间权重并羽化边缘 ----
+            # 高斯模糊让框边界过渡自然，避免头发/手臂硬截断
+            spatial_weight_u8 = (spatial_weight * 255).astype(np.uint8)
+            ksize = fade_px * 2 + 1
+            spatial_weight_u8 = cv2.GaussianBlur(spatial_weight_u8, (ksize, ksize), fade_px / 2)
+            spatial_weight = spatial_weight_u8.astype(np.float32) / 255.0
+
+            arr[:, :, 3] = alpha * spatial_weight
+
+            # ---- D. 压低极淡半透明残影 ----
+            # 框选模式下用户只要主体，alpha < 20 的极淡像素视为背景光晕清零
+            low_alpha = arr[:, :, 3] < 20
+            arr[:, :, 3] = np.where(low_alpha, 0, arr[:, :, 3])
+
+            return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
         session = _REMOVE_BG_SESSIONS.get(model)
         if session is None:
@@ -1039,9 +1018,9 @@ def remove_bg():
         with _REMOVE_BG_LOCK:
             output_image = remove(input_image, session=session)
 
-        # 若画了选区，过滤出与选区重叠的连通块（排除其他同框主体）
+        # 若画了选区，以选区为硬约束去除背景残留
         if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
-            output_image = keep_components_overlapping_crop(output_image, crop_box)
+            output_image = apply_crop_constraint(output_image, crop_box)
 
         # 去掉四周透明空白，让下载的 PNG 就是紧凑主体
         output_image = crop_to_alpha_bbox(output_image, padding=5)
