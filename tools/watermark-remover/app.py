@@ -915,20 +915,59 @@ def remove_bg():
             except Exception:
                 crop_box = None
 
+        # 按透明度外接矩形裁切透明空白，padding 像素避免主体贴边
+        def crop_to_alpha_bbox(image, padding=2):
+            arr = np.array(image)
+            if arr.ndim < 3 or arr.shape[2] < 4:
+                return image
+            alpha = arr[:, :, 3]
+            ys, xs = np.where(alpha > 0)
+            if len(xs) == 0:
+                return image
+            x1, x2 = int(xs.min()), int(xs.max()) + 1
+            y1, y2 = int(ys.min()), int(ys.max()) + 1
+            x1 = max(0, x1 - padding)
+            y1 = max(0, y1 - padding)
+            x2 = min(image.width, x2 + padding)
+            y2 = min(image.height, y2 + padding)
+            return image.crop((x1, y1, x2, y2))
+
+        # 若用户画了选区，只保留与选区重叠的前景连通块；
+        # 这样框住「猫身子」就能抠出完整猫（含尾巴、耳朵），同时排除同框的狗/其他主体。
+        def keep_components_overlapping_crop(image, box, min_alpha=10):
+            arr = np.array(image)
+            alpha = arr[:, :, 3]
+            _, binary = cv2.threshold(alpha, min_alpha, 255, cv2.THRESH_BINARY)
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+            if num_labels <= 1:
+                return image
+            cx1, cy1, cx2, cy2 = box
+            mask = np.zeros(alpha.shape, dtype=np.uint8)
+            for i in range(1, num_labels):
+                x, y, w, h, area = stats[i]
+                if area <= 0:
+                    continue
+                # 判断该连通块外接矩形是否与用户选区重叠
+                if not (x + w <= cx1 or x >= cx2 or y + h <= cy1 or y >= cy2):
+                    mask[labels == i] = 255
+            arr[:, :, 3] = cv2.bitwise_and(alpha, mask)
+            return Image.fromarray(arr)
+
         session = _REMOVE_BG_SESSIONS.get(model)
         if session is None:
             session = new_session(model)
             _REMOVE_BG_SESSIONS[model] = session
 
-        # 若选区有效且非全图，则仅对 ROI 抠图后贴回原尺寸透明画布
+        # 始终对整图推理：确保模型能看到完整对象，避免用户框选范围不够导致缺尾巴/耳朵
         with _REMOVE_BG_LOCK:
-            if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
-                roi = input_image.crop(crop_box)
-                roi_output = remove(roi, session=session)
-                output_image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-                output_image.paste(roi_output, (crop_box[0], crop_box[1]), roi_output)
-            else:
-                output_image = remove(input_image, session=session)
+            output_image = remove(input_image, session=session)
+
+        # 若画了选区，过滤出与选区重叠的连通块（排除其他同框主体）
+        if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
+            output_image = keep_components_overlapping_crop(output_image, crop_box)
+
+        # 去掉四周透明空白，让下载的 PNG 就是紧凑主体
+        output_image = crop_to_alpha_bbox(output_image, padding=2)
 
         buf = io.BytesIO()
         output_image.save(buf, format="PNG", optimize=True)
