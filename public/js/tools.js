@@ -44,5 +44,7 @@
     if (m) { t.category = m.category; t.cover = m.cover; }
   });
 
-  window.TOOLS = TOOLS;
+  // 服务器可设 ENABLE_MATTING=false 关闭「离境」抠图入口
+  const ENABLE_MATTING = typeof window.__ENABLE_MATTING__ === 'boolean' ? window.__ENABLE_MATTING__ : true;
+  window.TOOLS = ENABLE_MATTING ? TOOLS : TOOLS.filter((t) => t.id !== 'remove-bg');
 })();

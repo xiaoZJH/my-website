@@ -19,6 +19,8 @@ const ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(ROOT, 'data');
 const DB_PATH = path.join(DATA_DIR, 'toolbox.db');
+// AI 抠图（离境）功能开关：服务器可设 ENABLE_MATTING=false 关闭，本地默认开启
+const ENABLE_MATTING = process.env.ENABLE_MATTING !== 'false';
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -453,13 +455,20 @@ function serveStatic(req, res) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
+    let body = data;
+    // 向首页注入功能开关，前端据此显示/隐藏「离境」抠图
+    if (urlPath === '/index.html') {
+      const html = data.toString('utf8');
+      const inject = `<script>window.__ENABLE_MATTING__=${ENABLE_MATTING};</script>`;
+      body = Buffer.from(html.replace('</head>', `${inject}</head>`), 'utf8');
+    }
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
     });
-    res.end(data);
+    res.end(body);
   });
 }
 
@@ -517,7 +526,7 @@ function startWatermark() {
   }
   try {
   wmChild = spawn(py, [WM_APP], {
-    env: { ...process.env, WM_PORT: String(WM_PORT), WM_BASE_PATH },
+    env: { ...process.env, WM_PORT: String(WM_PORT), WM_BASE_PATH, ENABLE_MATTING: String(ENABLE_MATTING) },
     cwd: path.dirname(WM_APP),
     stdio: ['ignore', 'pipe', 'pipe'],
   });

@@ -73,18 +73,22 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 bp = Blueprint("wm", __name__, url_prefix=BASE_PATH or None)
 
+# AI 抠图功能总开关：服务器可设 ENABLE_MATTING=false 彻底关闭「离境」
+ENABLE_MATTING = os.environ.get("ENABLE_MATTING", "true").lower() != "false"
+SAM_AVAILABLE = False
+
 # 智能点选（Smart Click Matting）：挂载 MobileSAM/TinySAM 点击分割路由
 # 对外经 Node 反代为 /watermark-remover/api/sam-segment
-# SAM 为可选能力：若 torch/mobile_sam 未安装或导入失败，仅禁用智能点选，
+# SAM 为可选能力：若 torch/mobile_sam 未安装或导入失败，或功能开关关闭，仅禁用智能点选，
 # 不影响框选抠图主功能（避免整服务因可选依赖崩溃）。
-try:
-    from sam.sam_service import register_sam
-    SAM_AVAILABLE = True
-    register_sam(bp)
-    app.logger.info("SAM 智能点选已启用")
-except Exception as _sam_err:
-    SAM_AVAILABLE = False
-    app.logger.warning("SAM 智能点选不可用（不影响框选抠图）：%s", _sam_err)
+if ENABLE_MATTING:
+    try:
+        from sam.sam_service import register_sam
+        SAM_AVAILABLE = True
+        register_sam(bp)
+        app.logger.info("SAM 智能点选已启用")
+    except Exception as _sam_err:
+        app.logger.warning("SAM 智能点选不可用（不影响框选抠图）：%s", _sam_err)
 
 
 def allowed_file(filename: str) -> bool:
@@ -860,6 +864,8 @@ def auto_detect_remove():
 @bp.route("/api/remove-bg-models", methods=["GET"])
 def remove_bg_models_status():
     """返回 AI 抠图模型在本地缓存中的就绪状态，供前端禁用未下载模型。"""
+    if not ENABLE_MATTING:
+        return jsonify({"ok": False, "error": "AI 抠图功能未启用"}), 404
     return jsonify({
         "ok": True,
         "models": remove_bg_model_status(),
@@ -871,6 +877,8 @@ def remove_bg_models_status():
 @bp.route("/api/remove-bg", methods=["POST"])
 def remove_bg():
     """AI 抠图：接收图片与可选选区，返回透明背景 PNG（data URI）。"""
+    if not ENABLE_MATTING:
+        return jsonify({"ok": False, "error": "AI 抠图功能未启用"}), 404
     if "image" not in request.files:
         return jsonify({"ok": False, "error": "缺少图片"}), 400
     image_file = request.files["image"]

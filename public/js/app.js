@@ -5,6 +5,8 @@
   'use strict';
 
   const view = document.getElementById('view');
+  // 功能开关：服务器可设 ENABLE_MATTING=false 关闭「离境」抠图
+  const ENABLE_MATTING = typeof window.__ENABLE_MATTING__ === 'boolean' ? window.__ENABLE_MATTING__ : true;
   // 去水印（Flask + OpenCV）sidecar 服务地址
   // 统一同源：/watermark-remover/ 由 Node 主服务反向代理到内部 Flask，外部只暴露 4173
   const WM_URL = (window.__WM_URL__) || '/watermark-remover/';
@@ -1900,7 +1902,10 @@ C:\\path\\to\\python -m venv .venv
     const parts = hash.split('/').filter(Boolean);
     setActive(hash);
     if (parts[0] === 'tools' && parts[1] === 'watermark') return renderWatermark();
-    if (parts[0] === 'tools' && parts[1] === 'remove-bg') return renderRemoveBg();
+    if (parts[0] === 'tools' && parts[1] === 'remove-bg') {
+      if (!ENABLE_MATTING) { location.hash = '#/tools'; return; }
+      return renderRemoveBg();
+    }
     if (parts[0] === 'tools' && parts[1] === 'docx-watermark') return renderDocxWatermark();
     if (parts[0] === 'tools') return renderTools();
     if (parts[0] === 'blog' && parts[1]) return renderPost(parts[1]);
