@@ -39,8 +39,9 @@ _REMOVE_BG_SESSIONS = {}
 # rembg 模型缓存目录与可用性校验（避免首次使用因 GitHub 超时而报错）
 U2NET_HOME = os.environ.get("U2NET_HOME", os.path.join(os.path.expanduser("~"), ".u2net"))
 _REMOVE_BG_MODELS = {
-    "u2netp": {"file": "u2netp.onnx", "min_size": 4 * 1024 * 1024, "label": "u2netp · 轻量快速（推荐）"},
+    "bria-rmbg": {"file": "bria-rmbg.onnx", "min_size": 900 * 1024 * 1024, "label": "RMBG-1.4 · 高精度（推荐）"},
     "u2net": {"file": "u2net.onnx", "min_size": 160 * 1024 * 1024, "label": "u2net · 高精度"},
+    "u2netp": {"file": "u2netp.onnx", "min_size": 4 * 1024 * 1024, "label": "u2netp · 轻量快速"},
     "u2net_human_seg": {"file": "u2net_human_seg.onnx", "min_size": 160 * 1024 * 1024, "label": "u2net_human_seg · 人像专用"},
     "silueta": {"file": "silueta.onnx", "min_size": 35 * 1024 * 1024, "label": "silueta · 剪影"},
 }
@@ -1039,8 +1040,11 @@ def remove_bg():
         if crop_box and (crop_box[2] - crop_box[0] > 10 and crop_box[3] - crop_box[1] > 10):
             output_image = apply_crop_constraint(output_image, crop_box)
 
-        # 去掉四周透明空白，让下载的 PNG 就是紧凑主体
-        output_image = crop_to_alpha_bbox(output_image, padding=5)
+        # 去掉四周透明空白，让下载的 PNG 就是紧凑主体。
+        # 智能点选「自动选中主体」时，需要按原图尺寸返回（no_crop=1），
+        # 这样 u2net 的 mask 才能与 SAM 的坐标空间 1:1 对齐（用于质心点播种）。
+        if request.form.get("no_crop", "").lower() not in ("1", "true", "yes"):
+            output_image = crop_to_alpha_bbox(output_image, padding=5)
 
         buf = io.BytesIO()
         output_image.save(buf, format="PNG", optimize=True)

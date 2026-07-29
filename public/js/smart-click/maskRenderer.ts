@@ -1,93 +1,138 @@
-// maskRenderer.ts — ③ SAM mask 蒙版渲染（半透明蓝，对齐 WPS 智能点选风格）+ 点位绘制 + 掩码合并
-import type { PromptPoint } from './types';
+// maskRenderer.ts — 智能点选蒙版渲染（完全对齐 WPS 视觉规范）
+//
+// 视觉规则（严格对齐 WPS 智能点选）：
+//   1) 被保留区域：完全显示原图，清晰无遮挡、色彩不变（绝不叠加彩色蒙版）。
+//   2) 待移除背景：覆盖半透明浅灰色蒙版，使画面整体淡化发灰，直观区分保留/移除。
+//   3) 悬浮预览：鼠标指向未选中物体时，该物体覆盖淡蓝色半透明蒙版预览识别范围。
+//   4) 蒙版边缘平滑自然（羽化），无锯齿、无硬边、无横向条纹、无噪点。
+//   5) 全程不绘制任何点击圆点 / 点位标记 / 坐标痕迹。
 
-// WPS 智能点选风格：半透明橙红蒙版，提示「当前选中区域」
-const MASK_COLOR: [number, number, number] = [255, 90, 60];
-const MASK_ALPHA = 145; // 0~255
+// 背景（待移除）蒙版：半透明浅灰，使画面整体发灰
+const GRAY = 'rgba(150, 152, 160, 0.55)';
+// 悬浮预览蒙版：淡蓝色半透明
+const BLUE = 'rgba(90, 156, 248, 0.45)';
+// 边缘羽化半径（原图像素），保证蒙版边缘平滑、无硬边
+const BLUR = 2.0;
 
 export class MaskRenderer {
-  private maskCanvas: HTMLCanvasElement;
-  private maskCtx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
 
-  constructor() {
-    this.maskCanvas = document.createElement('canvas');
-    this.maskCtx = this.maskCanvas.getContext('2d')!;
-  }
+  // 已确认选区（保留区）的硬蒙版 + 其羽化版
+  private committed = document.createElement('canvas');
+  private committedBlur = document.createElement('canvas');
+  private committedHas = false;
+  private committedOverlay: HTMLCanvasElement | null = null;
 
-  /**
-   * 写入 mask（Uint8Array，值 0/1，长度 = w*h）。
-   * 这里把二值 mask 烘焙成一张「蓝色半透明」离屏画布，后续按视图缩放绘制即可，性能好且边缘清晰。
-   */
-  setMask(mask: Uint8Array, w: number, h: number) {
-    this.w = w;
-    this.h = h;
-    this.maskCanvas.width = w;
-    this.maskCanvas.height = h;
-    const img = this.maskCtx.createImageData(w, h);
-    for (let i = 0; i < w * h; i++) {
-      const o = i * 4;
-      if (mask[i]) {
-        img.data[o] = MASK_COLOR[0];
-        img.data[o + 1] = MASK_COLOR[1];
-        img.data[o + 2] = MASK_COLOR[2];
-        img.data[o + 3] = MASK_ALPHA;
-      } else {
-        img.data[o + 3] = 0;
+  // 悬浮预览（淡蓝）蒙版 + 其合成叠加层
+  private hoverOverlay: HTMLCanvasElement | null = null;
+
+  /** 构建一张「白色=1 / 透明=0」的硬蒙版离屏画布 */
+  private buildStencil(mask: Uint8Array | null, w: number, h: number): HTMLCanvasElement {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d')!;
+    if (mask && mask.length) {
+      const img = ctx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) {
+        if (mask[i]) {
+          const o = i * 4;
+          img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = 255;
+        }
       }
+      ctx.putImageData(img, 0, 0);
     }
-    this.maskCtx.putImageData(img, 0, 0);
+    return c;
   }
 
-  /** 把 mask 蒙版按当前视图（destX/Y/W/H 均为 CSS px）绘制到主画布 */
-  render(ctx: CanvasRenderingContext2D, destX: number, destY: number, destW: number, destH: number) {
-    if (!this.w) return;
+  /** 对蒙版做轻量高斯羽化，得到平滑边缘 */
+  private blur(src: HTMLCanvasElement): HTMLCanvasElement {
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const ctx = c.getContext('2d')!;
+    ctx.filter = `blur(${BLUR}px)`;
+    ctx.drawImage(src, 0, 0);
+    return c;
+  }
+
+  /** 写入已确认选区（Uint8Array，0/1，长度 = w*h）。mask 为 null 表示清空。 */
+  setCommitted(mask: Uint8Array | null, w: number, h: number) {
+    this.w = w; this.h = h;
+    this.committed.width = w; this.committed.height = h;
+    const cctx = this.committed.getContext('2d')!;
+    cctx.clearRect(0, 0, w, h);
+    let has = false;
+    if (mask && mask.length) {
+      const img = cctx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) {
+        if (mask[i]) {
+          has = true;
+          const o = i * 4;
+          img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = 255;
+        }
+      }
+      cctx.putImageData(img, 0, 0);
+    }
+    this.committedHas = has;
+    this.committedBlur = this.blur(this.committed);
+
+    // 预合成背景灰罩：整张浅灰 → 按保留区（羽化）挖空 → 保留区透出原图，背景发灰
+    const ov = document.createElement('canvas');
+    ov.width = w; ov.height = h;
+    const octx = ov.getContext('2d')!;
+    octx.fillStyle = GRAY;
+    octx.fillRect(0, 0, w, h);
+    octx.globalCompositeOperation = 'destination-out';
+    octx.filter = `blur(${BLUR}px)`;
+    octx.drawImage(this.committed, 0, 0);
+    this.committedOverlay = ov;
+  }
+
+  /** 写入悬浮预览蒙版（淡蓝，覆盖未选中物体）。mask 为 null / 空表示清除。 */
+  setHover(mask: Uint8Array | null, w: number, h: number) {
+    if (!mask || !mask.length || !w || !h) {
+      this.hoverOverlay = null;
+      return;
+    }
+    this.w = w; this.h = h;
+    const stencil = this.buildStencil(mask, w, h);
+    const blurStencil = this.blur(stencil);
+
+    const ov = document.createElement('canvas');
+    ov.width = w; ov.height = h;
+    const octx = ov.getContext('2d')!;
+    // 先铺满淡蓝，再只保留物体范围（羽化边缘）
+    octx.fillStyle = BLUE;
+    octx.fillRect(0, 0, w, h);
+    octx.globalCompositeOperation = 'destination-in';
+    octx.filter = `blur(${BLUR}px)`;
+    octx.drawImage(blurStencil, 0, 0);
+    // 已保留区域不显示淡蓝（避免蓝覆盖已确认的原图）
+    octx.globalCompositeOperation = 'destination-out';
+    octx.filter = `blur(${BLUR}px)`;
+    octx.drawImage(this.committedBlur, 0, 0);
+    this.hoverOverlay = ov;
+  }
+
+  clearHover() {
+    this.hoverOverlay = null;
+  }
+
+  /** 在主画布上绘制背景灰罩（仅在确有选区时绘制；无选区则不发灰，原图正常显示）。 */
+  renderCommitted(ctx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number) {
+    if (!this.committedHas || !this.committedOverlay) return;
     ctx.save();
-    ctx.imageSmoothingEnabled = true; // 缩小时更平滑；要硬边可改 false
-    ctx.drawImage(this.maskCanvas, destX, destY, destW, destH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.committedOverlay, dx, dy, dw, dh);
     ctx.restore();
   }
 
-  /** 绘制提示点：正向=青绿带「+」，负向=红带「−」 */
-  drawPoints(
-    ctx: CanvasRenderingContext2D,
-    toCanvas: (ix: number, iy: number) => { x: number; y: number },
-    points: PromptPoint[]
-  ) {
-    for (const p of points) {
-      const { x, y } = toCanvas(p.x, p.y);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = p.label === 1 ? 'rgba(16,185,129,0.95)' : 'rgba(239,68,68,0.95)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
-      // 加减号
-      ctx.strokeStyle = '#fff';
-      ctx.beginPath();
-      if (p.label === 1) {
-        ctx.moveTo(x - 3.5, y);
-        ctx.lineTo(x + 3.5, y);
-        ctx.moveTo(x, y - 3.5);
-        ctx.lineTo(x, y + 3.5);
-      } else {
-        ctx.moveTo(x - 3.5, y);
-        ctx.lineTo(x + 3.5, y);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  /** 掩码合并：'union' 取并集，'intersection' 取交集（用于把多次 SAM 输出融合） */
-  static merge(a: Uint8Array, b: Uint8Array, mode: 'union' | 'intersection' = 'union'): Uint8Array {
-    const out = new Uint8Array(a.length);
-    for (let i = 0; i < a.length; i++) {
-      out[i] = mode === 'union' ? (a[i] || b[i] ? 1 : 0) : a[i] && b[i] ? 1 : 0;
-    }
-    return out;
+  /** 在主画布上绘制悬浮淡蓝预览（若有）。 */
+  renderHover(ctx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number) {
+    if (!this.hoverOverlay) return;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.hoverOverlay, dx, dy, dw, dh);
+    ctx.restore();
   }
 }

@@ -1365,6 +1365,10 @@ img { max-width: 100%; display: block; }
 .rb-result img {
   display: block; height: auto; width: auto; max-width: 100%; max-height: 70vh;
 }
+/* 未生成结果时 src 为空，隐藏 <img> 避免显示裂图/alt 图标 */
+.rb-result img[src=""] {
+  display: none;
+}
 .rb-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: .9rem; font-weight: 600; color: var(--text-soft); pointer-events: none;
@@ -1423,6 +1427,254 @@ img { max-width: 100%; display: block; }
 .btn--toggle.is-active {
   color: #042f2a; background: var(--accent-2, #2dd4bf); border-color: var(--accent-2, #2dd4bf);
   box-shadow: 0 8px 20px -10px var(--accent-2, #2dd4bf);
+}
+
+/* =========================================================
+   离境 · AI 智能抠图 — 精致编辑器风格（覆盖上方旧 rb-* 规则）
+   ========================================================= */
+.rb-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: clamp(20px, 3.4vw, 40px);
+  margin-top: var(--sp-5);
+  overflow: hidden;
+}
+.rb-card::before {
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(680px 320px at 100% 0%, var(--accent-soft), transparent 60%);
+  opacity: .9;
+}
+
+/* ---------- 品牌头部 ---------- */
+.rb-brandhead { position: relative; }
+.rb-eyebrow {
+  display: inline-block;
+  font: 700 .72rem/1 var(--font-body);
+  letter-spacing: .3em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.rb-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 6.5vw, 4rem);
+  letter-spacing: .06em;
+  line-height: 1;
+  padding-left: 0;
+  background: linear-gradient(115deg, var(--text) 25%, var(--accent) 65%, var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rb-title::before { display: none; }
+.rb-sub { max-width: 54ch; font-size: 1rem; margin-top: 12px; }
+
+/* ---------- 上传区 ---------- */
+.rb-upload { position: relative; }
+.rb-drop {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  min-height: 320px; padding: var(--sp-7);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  text-align: center; cursor: pointer; overflow: hidden;
+  transition: border-color .3s var(--ease), background .3s var(--ease), transform .3s var(--ease);
+}
+.rb-drop:hover, .rb-drop.is-active, .rb-drop:focus-visible {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 82%);
+  transform: translateY(-3px);
+  outline: none;
+}
+.rb-drop__halo {
+  position: absolute; top: 14%; width: 230px; height: 230px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  opacity: .9; filter: blur(4px);
+  transition: transform .55s var(--ease);
+}
+.rb-drop:hover .rb-drop__halo { transform: scale(1.18); }
+.rb-drop__icon {
+  position: relative;
+  display: grid; place-items: center;
+  width: 92px; height: 92px; border-radius: 26px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 18px 40px -14px var(--accent);
+  transition: transform .35s var(--ease);
+}
+.rb-drop:hover .rb-drop__icon { transform: translateY(-4px) rotate(-5deg); }
+.rb-drop__icon svg { color: #fff; }
+.rb-drop__title { position: relative; font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--text); margin: 0; }
+.rb-drop__hint { position: relative; font-size: .86rem; color: var(--text-soft); max-width: 42ch; }
+
+/* ---------- 编辑器布局 ---------- */
+.rb-editor { margin-top: var(--sp-5); }
+.rb-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); margin-bottom: var(--sp-4); padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.rb-tool-modes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rb-mode-label { font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+.rb-tool-aside { display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap; }
+
+/* 分段控件（框选 / 智能点选） */
+.rb-seg {
+  display: inline-flex; padding: 4px; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+.rb-seg .btn--toggle {
+  border: none; background: transparent; color: var(--text-soft);
+  padding: 9px 20px; border-radius: var(--radius-pill); box-shadow: none;
+}
+.rb-seg .btn--toggle:hover { transform: none; color: var(--text); background: rgba(255,255,255,.07); }
+.rb-seg .btn--toggle.is-active {
+  color: #042f2a;
+  background: linear-gradient(135deg, var(--accent-2), #5eead4);
+  box-shadow: 0 8px 18px -8px var(--accent-2);
+}
+[data-theme="dark"] .rb-seg .btn--toggle.is-active { color: #04121a; }
+
+/* 模型选择 + 操作按钮 */
+.rb-model { display: flex; align-items: center; gap: 10px; }
+.rb-model label { font-size: .76rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-soft); }
+.rb-select {
+  appearance: none; min-width: 200px;
+  padding: 11px 38px 11px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-solid); color: var(--text);
+  font: inherit; font-size: .92rem; font-weight: 600;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+  cursor: pointer;
+  transition: border-color .25s var(--ease), box-shadow .25s var(--ease);
+}
+.rb-select:hover { border-color: var(--accent); box-shadow: 0 6px 16px -10px var(--accent); }
+.rb-select:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+.rb-tool-modes .rb-select { min-width: 0; }
+.rb-select option:disabled { color: var(--text-soft); opacity: .55; font-style: italic; }
+
+.rb-tool-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+
+/* 小按钮（清除选区） */
+.rb-mini {
+  font: inherit; font-size: .8rem; font-weight: 700; color: var(--text-soft);
+  padding: 6px 14px; border-radius: var(--radius-pill); cursor: pointer;
+  background: var(--surface-solid); border: 1px solid var(--border-strong);
+  transition: border-color .2s, color .2s, opacity .2s, transform .2s var(--ease);
+}
+.rb-mini:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.rb-mini:disabled { opacity: .4; cursor: not-allowed; }
+
+/* 次级按钮（下载） */
+.btn--secondary {
+  font: inherit; font-weight: 700; font-size: .92rem; color: var(--text);
+  padding: 12px 20px; border-radius: var(--radius-pill); cursor: pointer;
+  background: var(--surface-solid); border: 1px solid var(--border-strong);
+  transition: transform .3s var(--ease), border-color .25s, box-shadow .25s, opacity .2s;
+}
+.btn--secondary:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.btn--secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 切换按钮（分段控件外回退样式） */
+.btn--toggle {
+  font: inherit; font-weight: 600; font-size: .88rem;
+  color: var(--text); padding: 9px 16px; border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-strong);
+  cursor: pointer; transition: all .2s var(--ease);
+}
+.btn--toggle:hover { transform: translateY(-1px); border-color: var(--accent); }
+.btn--toggle.is-active {
+  color: #042f2a; background: var(--accent-2); border-color: var(--accent-2);
+  box-shadow: 0 8px 20px -10px var(--accent-2);
+}
+[data-theme="dark"] .btn--toggle.is-active { color: #04121a; }
+
+/* ---------- 工作区面板 ---------- */
+.rb-workspace { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+.rb-panel {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex; flex-direction: column; min-width: 0;
+  box-shadow: var(--shadow-sm);
+}
+.rb-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rb-panel__title {
+  font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--text);
+  display: inline-flex; align-items: center; gap: 9px;
+}
+.rb-panel__title::before {
+  content: ''; width: 8px; height: 20px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+.rb-panel__tag {
+  font-size: .7rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent-2); padding: 5px 11px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); border: 1px solid var(--border);
+}
+
+/* 棋盘格底（透明指示） */
+.rb-canvas-wrap, .rb-preview-wrap {
+  position: relative; flex: 1; min-height: 340px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); overflow: hidden;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, rgba(120,130,150,.13) 25%, transparent 25%, transparent 75%, rgba(120,130,150,.13) 75%),
+    linear-gradient(45deg, rgba(120,130,150,.13) 25%, transparent 25%, transparent 75%, rgba(120,130,150,.13) 75%);
+  background-size: 22px 22px;
+  background-position: 0 0, 11px 11px;
+  border: 1px solid var(--border);
+}
+[data-theme="dark"] .rb-canvas-wrap, [data-theme="dark"] .rb-preview-wrap {
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.06) 75%),
+    linear-gradient(45deg, rgba(255,255,255,.06) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.06) 75%);
+  background-color: #0d1219;
+}
+.rb-canvas {
+  max-width: 100%; max-height: 100%; cursor: crosshair; touch-action: none;
+  border-radius: 6px; box-shadow: 0 10px 30px -8px rgba(0,0,0,.28);
+}
+.rb-hint {
+  font-size: .84rem; color: var(--text-soft); line-height: 1.6; margin: 12px 2px 0;
+  padding: 11px 15px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); border: 1px solid var(--border);
+}
+.rb-result {
+  position: relative; display: inline-block; max-width: 100%; max-height: 100%;
+  line-height: 0; border-radius: 6px; overflow: hidden;
+  box-shadow: 0 10px 30px -8px rgba(0,0,0,.3);
+}
+.rb-result img { display: block; height: auto; width: auto; max-width: 100%; max-height: 66vh; }
+.rb-result img[src=""] { display: none; }
+.rb-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: .9rem; font-weight: 600; color: var(--text-soft); pointer-events: none;
+}
+.rb-status { margin-top: var(--sp-4); font-size: .92rem; min-height: 1.2em; }
+.rb-status--error { color: #ef4444; font-weight: 600; }
+.rb-status--info { color: var(--text-soft); display: flex; align-items: center; gap: 8px; }
+.rb-banner { padding: 14px 18px; border-radius: var(--radius); margin-bottom: var(--sp-4); font-size: .92rem; line-height: 1.6; }
+.rb-banner--warning { background: rgba(239,68,68,.10); color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
+
+@media (max-width: 860px) {
+  .rb-workspace { grid-template-columns: 1fr; }
+  .rb-toolbar { flex-direction: column; align-items: stretch; }
+  .rb-tool-aside { justify-content: space-between; }
 }
 
 /* ---------- Reduced motion ---------- */

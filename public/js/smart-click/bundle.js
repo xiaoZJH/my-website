@@ -25,13 +25,24 @@ var SmartClick = (() => {
     PointStore: () => PointStore,
     SamClient: () => SamClient,
     SmartClickTool: () => SmartClickTool,
+    binarize: () => binarize,
     cropToAlphaBbox: () => cropToAlphaBbox,
     decodeAlphaPng: () => decodeAlphaPng,
     decodeMaskImage: () => decodeMaskImage,
+    decodeSoftAlphaPng: () => decodeSoftAlphaPng,
+    decontaminateEdges: () => decontaminateEdges,
     dilateAt: () => dilateAt,
+    erodeSoft: () => erodeSoft,
+    extractComponentAt: () => extractComponentAt,
+    findLargestComponentCentroid: () => findLargestComponentCentroid,
     floodFillRemove: () => floodFillRemove,
+    keepComponentAt: () => keepComponentAt,
+    maskArea: () => maskArea,
     maskToBase64Png: () => maskToBase64Png,
-    maskToTransparentPng: () => maskToTransparentPng
+    maskToTransparentPng: () => maskToTransparentPng,
+    removeComponentAt: () => removeComponentAt,
+    sampleForegroundPoints: () => sampleForegroundPoints,
+    unionMasks: () => unionMasks
   });
 
   // public/js/smart-click/coordinate.ts
@@ -145,82 +156,128 @@ var SmartClick = (() => {
   };
 
   // public/js/smart-click/maskRenderer.ts
-  var MASK_COLOR = [255, 90, 60];
-  var MASK_ALPHA = 145;
+  var GRAY = "rgba(150, 152, 160, 0.55)";
+  var BLUE = "rgba(90, 156, 248, 0.45)";
+  var BLUR = 2;
   var MaskRenderer = class {
-    maskCanvas;
-    maskCtx;
     w = 0;
     h = 0;
-    constructor() {
-      this.maskCanvas = document.createElement("canvas");
-      this.maskCtx = this.maskCanvas.getContext("2d");
+    // 已确认选区（保留区）的硬蒙版 + 其羽化版
+    committed = document.createElement("canvas");
+    committedBlur = document.createElement("canvas");
+    committedHas = false;
+    committedOverlay = null;
+    // 悬浮预览（淡蓝）蒙版 + 其合成叠加层
+    hoverOverlay = null;
+    /** 构建一张「白色=1 / 透明=0」的硬蒙版离屏画布 */
+    buildStencil(mask, w, h) {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext("2d");
+      if (mask && mask.length) {
+        const img = ctx.createImageData(w, h);
+        for (let i = 0; i < w * h; i++) {
+          if (mask[i]) {
+            const o = i * 4;
+            img.data[o] = 255;
+            img.data[o + 1] = 255;
+            img.data[o + 2] = 255;
+            img.data[o + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      return c;
     }
-    /**
-     * 写入 mask（Uint8Array，值 0/1，长度 = w*h）。
-     * 这里把二值 mask 烘焙成一张「蓝色半透明」离屏画布，后续按视图缩放绘制即可，性能好且边缘清晰。
-     */
-    setMask(mask, w, h) {
+    /** 对蒙版做轻量高斯羽化，得到平滑边缘 */
+    blur(src) {
+      const c = document.createElement("canvas");
+      c.width = src.width;
+      c.height = src.height;
+      const ctx = c.getContext("2d");
+      ctx.filter = `blur(${BLUR}px)`;
+      ctx.drawImage(src, 0, 0);
+      return c;
+    }
+    /** 写入已确认选区（Uint8Array，0/1，长度 = w*h）。mask 为 null 表示清空。 */
+    setCommitted(mask, w, h) {
       this.w = w;
       this.h = h;
-      this.maskCanvas.width = w;
-      this.maskCanvas.height = h;
-      const img = this.maskCtx.createImageData(w, h);
-      for (let i = 0; i < w * h; i++) {
-        const o = i * 4;
-        if (mask[i]) {
-          img.data[o] = MASK_COLOR[0];
-          img.data[o + 1] = MASK_COLOR[1];
-          img.data[o + 2] = MASK_COLOR[2];
-          img.data[o + 3] = MASK_ALPHA;
-        } else {
-          img.data[o + 3] = 0;
+      this.committed.width = w;
+      this.committed.height = h;
+      const cctx = this.committed.getContext("2d");
+      cctx.clearRect(0, 0, w, h);
+      let has = false;
+      if (mask && mask.length) {
+        const img = cctx.createImageData(w, h);
+        for (let i = 0; i < w * h; i++) {
+          if (mask[i]) {
+            has = true;
+            const o = i * 4;
+            img.data[o] = 255;
+            img.data[o + 1] = 255;
+            img.data[o + 2] = 255;
+            img.data[o + 3] = 255;
+          }
         }
+        cctx.putImageData(img, 0, 0);
       }
-      this.maskCtx.putImageData(img, 0, 0);
+      this.committedHas = has;
+      this.committedBlur = this.blur(this.committed);
+      const ov = document.createElement("canvas");
+      ov.width = w;
+      ov.height = h;
+      const octx = ov.getContext("2d");
+      octx.fillStyle = GRAY;
+      octx.fillRect(0, 0, w, h);
+      octx.globalCompositeOperation = "destination-out";
+      octx.filter = `blur(${BLUR}px)`;
+      octx.drawImage(this.committed, 0, 0);
+      this.committedOverlay = ov;
     }
-    /** 把 mask 蒙版按当前视图（destX/Y/W/H 均为 CSS px）绘制到主画布 */
-    render(ctx, destX, destY, destW, destH) {
-      if (!this.w) return;
+    /** 写入悬浮预览蒙版（淡蓝，覆盖未选中物体）。mask 为 null / 空表示清除。 */
+    setHover(mask, w, h) {
+      if (!mask || !mask.length || !w || !h) {
+        this.hoverOverlay = null;
+        return;
+      }
+      this.w = w;
+      this.h = h;
+      const stencil = this.buildStencil(mask, w, h);
+      const blurStencil = this.blur(stencil);
+      const ov = document.createElement("canvas");
+      ov.width = w;
+      ov.height = h;
+      const octx = ov.getContext("2d");
+      octx.fillStyle = BLUE;
+      octx.fillRect(0, 0, w, h);
+      octx.globalCompositeOperation = "destination-in";
+      octx.filter = `blur(${BLUR}px)`;
+      octx.drawImage(blurStencil, 0, 0);
+      octx.globalCompositeOperation = "destination-out";
+      octx.filter = `blur(${BLUR}px)`;
+      octx.drawImage(this.committedBlur, 0, 0);
+      this.hoverOverlay = ov;
+    }
+    clearHover() {
+      this.hoverOverlay = null;
+    }
+    /** 在主画布上绘制背景灰罩（仅在确有选区时绘制；无选区则不发灰，原图正常显示）。 */
+    renderCommitted(ctx, dx, dy, dw, dh) {
+      if (!this.committedHas || !this.committedOverlay) return;
       ctx.save();
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(this.maskCanvas, destX, destY, destW, destH);
+      ctx.drawImage(this.committedOverlay, dx, dy, dw, dh);
       ctx.restore();
     }
-    /** 绘制提示点：正向=青绿带「+」，负向=红带「−」 */
-    drawPoints(ctx, toCanvas, points) {
-      for (const p of points) {
-        const { x, y } = toCanvas(p.x, p.y);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = p.label === 1 ? "rgba(16,185,129,0.95)" : "rgba(239,68,68,0.95)";
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "#fff";
-        ctx.stroke();
-        ctx.strokeStyle = "#fff";
-        ctx.beginPath();
-        if (p.label === 1) {
-          ctx.moveTo(x - 3.5, y);
-          ctx.lineTo(x + 3.5, y);
-          ctx.moveTo(x, y - 3.5);
-          ctx.lineTo(x, y + 3.5);
-        } else {
-          ctx.moveTo(x - 3.5, y);
-          ctx.lineTo(x + 3.5, y);
-        }
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-    /** 掩码合并：'union' 取并集，'intersection' 取交集（用于把多次 SAM 输出融合） */
-    static merge(a, b, mode = "union") {
-      const out = new Uint8Array(a.length);
-      for (let i = 0; i < a.length; i++) {
-        out[i] = mode === "union" ? a[i] || b[i] ? 1 : 0 : a[i] && b[i] ? 1 : 0;
-      }
-      return out;
+    /** 在主画布上绘制悬浮淡蓝预览（若有）。 */
+    renderHover(ctx, dx, dy, dw, dh) {
+      if (!this.hoverOverlay) return;
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.hoverOverlay, dx, dy, dw, dh);
+      ctx.restore();
     }
   };
 
@@ -233,10 +290,48 @@ var SmartClick = (() => {
     ctx.drawImage(source, 0, 0, w, h);
     const img = ctx.getImageData(0, 0, w, h);
     for (let i = 0; i < w * h; i++) {
-      img.data[i * 4 + 3] = mask[i] ? 255 : 0;
+      const v = mask[i];
+      img.data[i * 4 + 3] = v === 1 ? 255 : v;
     }
+    decontaminateEdges(img.data, w, h);
     ctx.putImageData(img, 0, 0);
     return c.toDataURL("image/png");
+  }
+  function decontaminateEdges(rgba, w, h, radius = 4, edgeLow = 15, edgeHigh = 240) {
+    const len = w * h;
+    const opaque = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      opaque[i] = rgba[i * 4 + 3] > edgeHigh ? 1 : 0;
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const a = rgba[i * 4 + 3];
+        if (a <= edgeLow || a >= edgeHigh) continue;
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+        const y0 = Math.max(0, y - radius);
+        const y1 = Math.min(h - 1, y + radius);
+        const x0 = Math.max(0, x - radius);
+        const x1 = Math.min(w - 1, x + radius);
+        for (let yy = y0; yy <= y1; yy++) {
+          for (let xx = x0; xx <= x1; xx++) {
+            const j = yy * w + xx;
+            if (!opaque[j]) continue;
+            const idx = j * 4;
+            rSum += rgba[idx];
+            gSum += rgba[idx + 1];
+            bSum += rgba[idx + 2];
+            count++;
+          }
+        }
+        if (count > 0) {
+          const idx = i * 4;
+          rgba[idx] = Math.round(rSum / count);
+          rgba[idx + 1] = Math.round(gSum / count);
+          rgba[idx + 2] = Math.round(bSum / count);
+        }
+      }
+    }
   }
   function cropToAlphaBbox(dataUrl, padding = 4) {
     return new Promise((resolve, reject) => {
@@ -319,6 +414,128 @@ var SmartClick = (() => {
       img.src = dataUrl;
     });
   }
+  function decodeSoftAlphaPng(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, w, h).data;
+        const out = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) out[i] = d[i * 4 + 3];
+        resolve(out);
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+  function binarize(mask, threshold = 30) {
+    const out = new Uint8Array(mask.length);
+    for (let i = 0; i < mask.length; i++) out[i] = mask[i] > threshold ? 1 : 0;
+    return out;
+  }
+  function erodeSoft(mask, w, h, radius = 1) {
+    const out = new Uint8Array(mask.length);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let min = 255;
+        const i = y * w + x;
+        for (let dy = -radius; dy <= radius && min > 0; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= h) continue;
+          for (let dx = -radius; dx <= radius && min > 0; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= w) continue;
+            const v = mask[ny * w + nx];
+            if (v < min) min = v;
+          }
+        }
+        out[i] = min;
+      }
+    }
+    return out;
+  }
+  function findLargestComponentCentroid(mask, w, h) {
+    const visited = new Uint8Array(w * h);
+    let bestArea = 0;
+    let bestCx = 0;
+    let bestCy = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const start = y * w + x;
+        if (!mask[start] || visited[start]) continue;
+        let area = 0;
+        let sumX = 0;
+        let sumY = 0;
+        const stack = [x, y];
+        visited[start] = 1;
+        while (stack.length) {
+          const cy = stack.pop();
+          const cx = stack.pop();
+          const i = cy * w + cx;
+          area++;
+          sumX += cx;
+          sumY += cy;
+          if (cy > 0) {
+            const ni = i - w;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx, cy - 1);
+            }
+          }
+          if (cy < h - 1) {
+            const ni = i + w;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx, cy + 1);
+            }
+          }
+          if (cx > 0) {
+            const ni = i - 1;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx - 1, cy);
+            }
+          }
+          if (cx < w - 1) {
+            const ni = i + 1;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx + 1, cy);
+            }
+          }
+        }
+        if (area > bestArea) {
+          bestArea = area;
+          bestCx = sumX / area;
+          bestCy = sumY / area;
+        }
+      }
+    }
+    if (bestArea === 0) return null;
+    let rx = Math.round(bestCx);
+    let ry = Math.round(bestCy);
+    rx = Math.max(0, Math.min(w - 1, rx));
+    ry = Math.max(0, Math.min(h - 1, ry));
+    if (mask[ry * w + rx]) return { x: rx, y: ry };
+    const R = Math.min(Math.max(w, h), 64);
+    for (let r = 1; r < R; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dy), Math.abs(-r)) !== r && Math.max(Math.abs(dy), Math.abs(r)) !== r) continue;
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dy), Math.abs(dx)) !== r) continue;
+          const nx = rx + dx;
+          const ny = ry + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h && mask[ny * w + nx]) return { x: nx, y: ny };
+        }
+      }
+    }
+    return { x: rx, y: ry };
+  }
   function floodFillRemove(mask, w, h, sx, sy) {
     const out = mask.slice();
     const idx = sy * w + sx;
@@ -347,25 +564,158 @@ var SmartClick = (() => {
     }
     return out;
   }
+  function maskArea(mask) {
+    let s = 0;
+    for (let i = 0; i < mask.length; i++) s += mask[i];
+    return s;
+  }
+  function unionMasks(a, b) {
+    const out = new Uint8Array(a.length);
+    for (let i = 0; i < a.length; i++) out[i] = a[i] || b[i] ? 1 : 0;
+    return out;
+  }
+  function sampleForegroundPoints(mask, w, h, maxPoints = 8) {
+    const visited = new Uint8Array(w * h);
+    let bestPixels = [];
+    let bestBbox = { minX: w, minY: h, maxX: -1, maxY: -1 };
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const start = y * w + x;
+        if (!mask[start] || visited[start]) continue;
+        const comp = [];
+        let minX = x, minY = y, maxX = x, maxY = y;
+        const stack = [x, y];
+        visited[start] = 1;
+        while (stack.length) {
+          const cy = stack.pop();
+          const cx = stack.pop();
+          const i = cy * w + cx;
+          comp.push(i);
+          if (cx < minX) minX = cx;
+          if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy;
+          if (cy > maxY) maxY = cy;
+          if (cy > 0) {
+            const ni = i - w;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx, cy - 1);
+            }
+          }
+          if (cy < h - 1) {
+            const ni = i + w;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx, cy + 1);
+            }
+          }
+          if (cx > 0) {
+            const ni = i - 1;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx - 1, cy);
+            }
+          }
+          if (cx < w - 1) {
+            const ni = i + 1;
+            if (mask[ni] && !visited[ni]) {
+              visited[ni] = 1;
+              stack.push(cx + 1, cy);
+            }
+          }
+        }
+        if (comp.length > bestPixels.length) {
+          bestPixels = comp;
+          bestBbox = { minX, minY, maxX, maxY };
+        }
+      }
+    }
+    if (bestPixels.length === 0) return [];
+    const K = Math.max(2, Math.ceil(Math.sqrt(maxPoints)));
+    const pts = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let gy = 0; gy < K; gy++) {
+      for (let gx = 0; gx < K; gx++) {
+        const fx = Math.round(bestBbox.minX + (gx + 0.5) * (bestBbox.maxX - bestBbox.minX) / K);
+        const fy = Math.round(bestBbox.minY + (gy + 0.5) * (bestBbox.maxY - bestBbox.minY) / K);
+        const p = snapToForeground(mask, w, h, fx, fy);
+        if (p && !seen.has(p.y * w + p.x)) {
+          seen.add(p.y * w + p.x);
+          pts.push({ x: p.x, y: p.y, label: 1 });
+        }
+      }
+    }
+    if (pts.length > maxPoints) {
+      const out = [];
+      const step = pts.length / maxPoints;
+      for (let i = 0; i < maxPoints; i++) out.push(pts[Math.floor(i * step)]);
+      return out;
+    }
+    return pts;
+  }
+  function snapToForeground(mask, w, h, x, y) {
+    x = Math.max(0, Math.min(w - 1, x));
+    y = Math.max(0, Math.min(h - 1, y));
+    if (mask[y * w + x]) return { x, y };
+    const R = Math.min(Math.max(w, h), 128);
+    for (let r = 1; r < R; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dy), Math.abs(dx)) !== r) continue;
+          const nx = x + dx;
+          if (nx >= 0 && nx < w && mask[ny * w + nx]) return { x: nx, y: ny };
+        }
+      }
+    }
+    return null;
+  }
+  function extractComponentAt(mask, w, h, sx, sy) {
+    const out = new Uint8Array(w * h);
+    sx = Math.max(0, Math.min(w - 1, sx));
+    sy = Math.max(0, Math.min(h - 1, sy));
+    const idx = sy * w + sx;
+    if (!mask[idx]) return out;
+    const stack = [[sx, sy]];
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      const i = y * w + x;
+      if (x < 0 || x >= w || y < 0 || y >= h || !mask[i] || out[i]) continue;
+      out[i] = 1;
+      stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+    return out;
+  }
+  function removeComponentAt(mask, w, h, sx, sy) {
+    const comp = extractComponentAt(mask, w, h, sx, sy);
+    const out = mask.slice();
+    for (let i = 0; i < out.length; i++) if (comp[i]) out[i] = 0;
+    return out;
+  }
+  function keepComponentAt(mask, w, h, sx, sy) {
+    return extractComponentAt(mask, w, h, sx, sy);
+  }
 
   // public/js/smart-click/samClient.ts
   var SamClient = class {
     constructor(endpoint) {
       this.endpoint = endpoint;
+      this.statusUrl = endpoint.replace(/\/sam-segment$/, "/sam-status");
     }
     endpoint;
+    statusUrl;
+    /** 探测 MobileSAM / 权重是否就绪 */
+    async status() {
+      const r = await fetch(this.statusUrl, { method: "GET" });
+      if (!r.ok) throw new Error("SAM \u72B6\u6001\u63A5\u53E3\u8FD4\u56DE " + r.status);
+      return await r.json();
+    }
     /**
      * 调用 SAM 分割接口。
      * 请求示例（前端发出）：
      *   POST /api/sam-segment
-     *   Content-Type: application/json
-     *   {
-     *     "image": "data:image/png;base64,iVBORw0KGgo...",   // 原图 base64
-     *     "points": [                                        // 累积提示点
-     *       { "x": 820, "y": 410, "label": 1 },              // 左键：保留该物体
-     *       { "x": 300, "y": 200, "label": 0 }               // 右键：剔除该处背景
-     *     ]
-     *   }
+     *   { "image": "data:image/png;base64,...", "points": [{ "x": 820, "y": 410, "label": 1 }], "sig": "<原图base64>" }
      * 后端返回：{ ok, width, height, mask_image: "data:image/png;base64,...", score }
      */
     async segment(req, signal) {
@@ -401,64 +751,90 @@ var SmartClick = (() => {
   }
 
   // public/js/smart-click/smartClickTool.ts
+  var HOVER_DEBOUNCE = 160;
   var SmartClickTool = class {
     mode = "crop";
-    points = new PointStore();
-    mask = null;
-    maskW = 0;
-    maskH = 0;
+    points = [];
+    // 已确认的提示点集合（1=正向保留，0=反向剔除）
+    committed = null;
+    // 当前全局选区（二值 0/1），原图分辨率，用于渲染遮罩
+    committedSoft = null;
+    // 当前全局选区软 Alpha（0~255），用于生成透明 PNG（边缘羽化）
+    baseMask = null;
+    // u2net 初始完整主体二值 mask，用于左键「增选」时找回主体
+    baseMaskSoft = null;
+    // u2net 初始完整主体软 Alpha，用于增选时恢复自然边缘
+    cw = 0;
+    ch = 0;
+    history = [];
+    // 每次变更前的快照（点位 + 蒙版），用于撤销
+    hover = null;
+    // 悬浮预览蒙版
     renderer = new MaskRenderer();
     client;
     opts;
-    pending = null;
+    bound = [];
+    samAvailable = null;
+    probing = false;
     panning = false;
     panStart = null;
     spaceDown = false;
-    bound = [];
-    samAvailable = null;
-    // 探测后端 SAM 是否可用
-    autoInited = false;
+    hoverTimer = null;
     constructor(opts) {
       this.opts = opts;
       this.client = new SamClient(opts.endpoint);
-      this.points.onChange(() => this.opts.onPointsChange?.(this.points.length));
     }
     getMode() {
       return this.mode;
     }
-    getPoints() {
-      return this.points.get();
-    }
-    getMask() {
-      return this.mask;
-    }
     hasMask() {
-      return !!this.mask;
+      return !!this.committed && this.committed.some((v) => v !== 0);
     }
-    /** 切换工具模式；切离 'click' 时自动清除 SAM 点位与蒙版 */
+    /** 切换工具模式；切离 'click' 时自动清除选区与蒙版 */
     setMode(m) {
       if (m === this.mode) return;
       this.mode = m;
+      this.opts.canvas.style.cursor = "default";
       if (m !== "click") {
-        this.points.clear();
-        this.clearMask();
-        this.autoInited = false;
+        this.clearAll();
       } else {
-        window.setTimeout(() => this.autoInitMask(), 0);
+        this.resetState();
+        this.bindOrUnbind(true);
+        this.probeSam();
       }
-      this.opts.canvas.style.cursor = m === "click" ? "crosshair" : "default";
-      this.bindOrUnbind(m === "click");
       this.redraw();
+    }
+    /** 新图片加载后重置（不清空事件绑定；由外部 setMode 控制） */
+    resetForNewImage() {
+      this.resetState();
+      this.opts.onSelectionChange?.(false);
+      this.redraw();
+    }
+    resetState() {
+      this.points = [];
+      this.committed = null;
+      this.committedSoft = null;
+      this.baseMask = null;
+      this.baseMaskSoft = null;
+      this.cw = 0;
+      this.ch = 0;
+      this.history = [];
+      this.hover = null;
+      this.renderer.setCommitted(null, 1, 1);
+      this.renderer.clearHover();
+      this.samAvailable = null;
     }
     // ---------- 事件绑定 ----------
     bindOrUnbind(on) {
       const c = this.opts.canvas;
       const map = [
         ["mousedown", this.onMouseDown],
+        ["dblclick", this.onDoubleClick],
         ["contextmenu", this.onContextMenu],
         ["wheel", this.onWheel],
         ["mousemove", this.onMouseMove],
-        ["mouseup", this.onMouseUp]
+        ["mouseup", this.onMouseUp],
+        ["mouseleave", this.onMouseLeave]
       ];
       if (on) {
         map.forEach(([ev, fn]) => {
@@ -475,12 +851,22 @@ var SmartClick = (() => {
       }
     }
     onContextMenu = (e) => {
-      if (this.mode === "click") e.preventDefault();
+      if (this.mode !== "click") return;
+      e.preventDefault();
+      const me = e;
+      const src = this.opts.getSource();
+      if (!src) return;
+      const rect = this.opts.canvas.getBoundingClientRect();
+      const p = this.opts.transformer.screenToImage(me.clientX, me.clientY, rect);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      if (x < 0 || x >= src.naturalWidth || y < 0 || y >= src.naturalHeight) return;
+      this.addPoint(x, y, 0);
     };
     onMouseDown = (e) => {
       if (this.mode !== "click") return;
       const src = this.opts.getSource();
-      if (!src || !this.mask) return;
+      if (!src) return;
       const rect = this.opts.canvas.getBoundingClientRect();
       if (e.button === 1 || e.button === 0 && this.spaceDown) {
         const v = this.opts.transformer.getView();
@@ -490,18 +876,28 @@ var SmartClick = (() => {
         return;
       }
       if (e.button !== 0) return;
-      const img = this.opts.transformer.screenToImage(e.clientX, e.clientY, rect);
-      const x = Math.round(img.x), y = Math.round(img.y);
-      if (x < 0 || x >= this.maskW || y < 0 || y >= this.maskH) return;
-      const idx = y * this.maskW + x;
-      const isInside = this.mask[idx] === 1;
-      const label = isInside ? 0 : 1;
-      this.points.add({ x, y, label });
-      if (this.samAvailable === false) {
-        this.localRefine(x, y, label);
-      } else {
-        this.requestSegment(true);
+      if (e.detail > 1) return;
+      const p = this.opts.transformer.screenToImage(e.clientX, e.clientY, rect);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      if (x < 0 || x >= src.naturalWidth || y < 0 || y >= src.naturalHeight) return;
+      if (e.ctrlKey || e.metaKey) {
+        this.refineWithSam(x, y, 1);
+        return;
       }
+      this.addPoint(x, y, 1);
+    };
+    /** 双击 = SAM 精准边缘精修（救命稻草模式） */
+    onDoubleClick = (e) => {
+      if (this.mode !== "click") return;
+      const src = this.opts.getSource();
+      if (!src) return;
+      const rect = this.opts.canvas.getBoundingClientRect();
+      const p = this.opts.transformer.screenToImage(e.clientX, e.clientY, rect);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      if (x < 0 || x >= src.naturalWidth || y < 0 || y >= src.naturalHeight) return;
+      this.refineWithSam(x, y, 1);
     };
     onWheel = (e) => {
       if (this.mode !== "click") return;
@@ -512,16 +908,26 @@ var SmartClick = (() => {
       this.redraw();
     };
     onMouseMove = (e) => {
-      if (!this.panning || !this.panStart) return;
-      this.opts.transformer.setView({
-        offsetX: this.panStart.ox + (e.clientX - this.panStart.x),
-        offsetY: this.panStart.oy + (e.clientY - this.panStart.y)
-      });
-      this.redraw();
+      if (this.panning && this.panStart) {
+        this.opts.transformer.setView({
+          offsetX: this.panStart.ox + (e.clientX - this.panStart.x),
+          offsetY: this.panStart.oy + (e.clientY - this.panStart.y)
+        });
+        this.redraw();
+        return;
+      }
+      if (this.mode !== "click") return;
+      if (this.hoverTimer) clearTimeout(this.hoverTimer);
+      this.hoverTimer = window.setTimeout(() => this.doHover(e.clientX, e.clientY), HOVER_DEBOUNCE);
     };
     onMouseUp = () => {
       this.panning = false;
       this.panStart = null;
+    };
+    onMouseLeave = () => {
+      this.renderer.clearHover();
+      this.hover = null;
+      this.redraw();
     };
     onKeyDown = (e) => {
       if (this.mode !== "click") return;
@@ -534,126 +940,316 @@ var SmartClick = (() => {
     onKeyUp = (e) => {
       if (e.code === "Space") this.spaceDown = false;
     };
-    // ---------- 自动初始化蒙版 ----------
-    /** 用现有 u2net 全图推理生成初始选区；SAM 模型未装时也能用。 */
-    async autoInitMask() {
-      if (this.autoInited) return;
+    // ---------- 悬浮预览（淡蓝） ----------
+    /** 100% 前端完成：鼠标下的物体连通块高亮，不调用后端模型。 */
+    doHover(clientX, clientY) {
       const src = this.opts.getSource();
-      const file = this.opts.getUploadFile?.();
-      if (!src || !file) {
-        this.opts.onStatus?.("\u8BF7\u5148\u4E0A\u4F20\u56FE\u7247", "error");
+      if (!src) return;
+      const rect = this.opts.canvas.getBoundingClientRect();
+      const p = this.opts.transformer.screenToImage(clientX, clientY, rect);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      if (x < 0 || x >= src.naturalWidth || y < 0 || y >= src.naturalHeight) {
+        this.renderer.clearHover();
+        this.hover = null;
+        this.redraw();
         return;
       }
-      this.autoInited = true;
-      this.opts.onStatus?.("\u6B63\u5728\u81EA\u52A8\u8BC6\u522B\u4E3B\u4F53\u2026", "info");
-      try {
-        const form = new FormData();
-        form.append("image", file);
-        form.append("model", "u2netp");
-        const r = await fetch(this.opts.removeBgEndpoint, { method: "POST", body: form });
-        const j = await r.json();
-        if (!j.ok) throw new Error(j.error || "\u81EA\u52A8\u8BC6\u522B\u5931\u8D25");
-        const mask = await decodeAlphaPng(j.result_url);
-        this.setMask(mask, src.naturalWidth, src.naturalHeight);
-        this.probeSam();
-        this.opts.onStatus?.(
-          "\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3B\u4F53\uFF1A\u7EA2\u8272\u8499\u7248=\u5F53\u524D\u9009\u4E2D\uFF0C\u70B9\u51FB\u7EA2\u8272\u533A\u57DF\u53EF\u53BB\u9664\uFF0C\u70B9\u51FB\u80CC\u666F\u53EF\u8865\u56DE\u3002",
-          "info"
-        );
-      } catch (err) {
-        this.opts.onStatus?.("\u81EA\u52A8\u8BC6\u522B\u5931\u8D25\uFF1A" + (err?.message || err), "error");
-        this.autoInited = false;
+      const sourceMask = this.baseMask || this.committed;
+      if (!sourceMask) return;
+      const comp = extractComponentAt(sourceMask, this.cw, this.ch, x, y);
+      const has = comp.some((v) => v !== 0);
+      if (!has) {
+        this.renderer.clearHover();
+        this.hover = null;
+        this.redraw();
+        return;
       }
-    }
-    setMask(mask, w, h) {
-      this.mask = mask;
-      this.maskW = w;
-      this.maskH = h;
-      this.renderer.setMask(this.mask, this.maskW, this.maskH);
+      this.hover = comp;
+      this.renderer.setHover(comp, this.cw, this.ch);
       this.redraw();
     }
-    async probeSam() {
+    async getImageB64() {
+      if (this.opts.getImageBase64) return await this.opts.getImageBase64();
+      const s = this.opts.getSource();
+      return s.src;
+    }
+    /**
+     * 截取以 (cx, cy) 为中心的局部正方形切片，用于 MobileSAM 局部推理。
+     * 返回 { dataUrl, localX, localY, x0, y0, size }，
+     * 其中 (localX, localY) 是点击点在切片内的坐标，(x0, y0) 是切片左上角在原图的位置。
+     */
+    getCropAround(cx, cy) {
+      const src = this.opts.getSource();
+      const W = src.naturalWidth;
+      const H = src.naturalHeight;
+      const size = Math.max(W, H) > 1024 ? 512 : 256;
+      let x0 = Math.round(cx - size / 2);
+      let y0 = Math.round(cy - size / 2);
+      if (x0 < 0) x0 = 0;
+      if (y0 < 0) y0 = 0;
+      if (x0 + size > W) x0 = Math.max(0, W - size);
+      if (y0 + size > H) y0 = Math.max(0, H - size);
+      const cropW = Math.min(size, W - x0);
+      const cropH = Math.min(size, H - y0);
+      const c = document.createElement("canvas");
+      c.width = cropW;
+      c.height = cropH;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(src, x0, y0, cropW, cropH, 0, 0, cropW, cropH);
+      return {
+        dataUrl: c.toDataURL("image/png"),
+        localX: cx - x0,
+        localY: cy - y0,
+        x0,
+        y0,
+        size,
+        cropW,
+        cropH
+      };
+    }
+    // ---------- 选区提交（左键保留 / 右键剔除） ----------
+    ensureDims() {
+      const s = this.opts.getSource();
+      if (s && (this.cw !== s.naturalWidth || this.ch !== s.naturalHeight)) {
+        this.cw = s.naturalWidth;
+        this.ch = s.naturalHeight;
+      }
+    }
+    pushHistory() {
+      this.history.push({
+        points: this.points.map((p) => ({ ...p })),
+        mask: this.committed ? this.committed.slice() : null,
+        maskSoft: this.committedSoft ? this.committedSoft.slice() : null
+      });
+      if (this.history.length > 60) this.history.shift();
+    }
+    /**
+     * 新增一个提示点做局部修正（复刻 WPS 智能点选）。
+     * - 正向(1)=左键保留：把 baseMask 中点击点所在的前景连通块加回当前选区；
+     * - 反向(0)=右键剔除：把当前选区中点击点所在的前景连通块移除。
+     * 不再调用 SAM 做全局重分割，避免多点分散在狗/猫两个独立物体上时被切碎或丢失。
+     * 未装 MobileSAM 时降级为本地膨胀/FloodFill 微调。
+     */
+    async addPoint(x, y, label) {
+      this.ensureDims();
+      if (this.samAvailable !== true) {
+        this.pushHistory();
+        this.applyRefine(x, y, label);
+        return;
+      }
+      this.pushHistory();
+      if (label === 1) {
+        const sourceMask = this.baseMask || this.committed;
+        if (!sourceMask) return;
+        const comp = extractComponentAt(sourceMask, this.cw, this.ch, x, y);
+        if (this.committed) {
+          const merged = this.committed.slice();
+          for (let i = 0; i < merged.length; i++) if (comp[i]) merged[i] = 1;
+          this.committed = merged;
+          if (this.baseMaskSoft && this.committedSoft) {
+            const soft = this.committedSoft.slice();
+            for (let i = 0; i < soft.length; i++) if (comp[i]) soft[i] = this.baseMaskSoft[i];
+            this.committedSoft = soft;
+          }
+        } else {
+          this.committed = comp;
+          if (this.baseMaskSoft) {
+            const soft = new Uint8Array(this.cw * this.ch);
+            for (let i = 0; i < soft.length; i++) if (comp[i]) soft[i] = this.baseMaskSoft[i];
+            this.committedSoft = soft;
+          }
+        }
+      } else {
+        if (!this.committed) return;
+        this.committed = removeComponentAt(this.committed, this.cw, this.ch, x, y);
+        if (this.committedSoft) {
+          const soft = this.committedSoft.slice();
+          for (let i = 0; i < soft.length; i++) if (!this.committed[i]) soft[i] = 0;
+          this.committedSoft = soft;
+        }
+      }
+      this.points.push({ x, y, label });
+      this.renderer.setCommitted(this.committed, this.cw, this.ch);
+      this.afterCommit();
+    }
+    /** 应用一份 mask 作为当前选区（已写入 this.committed），刷新渲染与选择态。 */
+    applyCommitted(mask, showMsg = false) {
+      this.committed = mask;
+      if (mask) this.renderer.setCommitted(mask, this.cw, this.ch);
+      else this.renderer.setCommitted(null, 1, 1);
+      this.renderer.clearHover();
+      this.hover = null;
+      this.redraw();
+      this.opts.onSelectionChange?.(this.hasMask());
+      if (showMsg) {
+        this.opts.onStatus?.("\u5DF2\u7528\u5168\u90E8\u63D0\u793A\u70B9\u91CD\u65B0\u63A8\u7406\u9009\u533A\uFF0C\u53EF\u7EE7\u7EED\u70B9\u51FB\u6216\u300C\u5F00\u59CB\u62A0\u56FE\u300D\u3002", "info");
+      }
+    }
+    afterCommit() {
+      this.applyCommitted(this.committed, true);
+    }
+    /**
+     * SAM 边缘精修（救命稻草模式）：仅在双击或 Ctrl+点击时调用。
+     * 关键优化：不再发送全图，而是截取 256x256/512x512 局部切片给 MobileSAM，
+     * 推理更快、网络更小，然后把局部 mask 拼回全局选区。
+     * 正常左/右键只走 Flood Fill 连通块，避免多主体被 SAM 切碎。
+     */
+    async refineWithSam(x, y, label) {
+      this.ensureDims();
+      if (this.samAvailable !== true) {
+        this.opts.onStatus?.("MobileSAM \u672A\u5C31\u7EEA\uFF0C\u65E0\u6CD5\u505A\u8FB9\u7F18\u7CBE\u4FEE\u3002", "error");
+        return;
+      }
+      this.pushHistory();
       try {
-        const r = await fetch(this.opts.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        this.samAvailable = r.status !== 404;
-        if (!this.samAvailable) {
-          this.opts.onStatus?.("\u68C0\u6D4B\u5230 SAM \u6A21\u578B\u672A\u90E8\u7F72\uFF0C\u5DF2\u5207\u6362\u4E3A\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\u6A21\u5F0F\u3002", "info");
+        const crop = this.getCropAround(x, y);
+        this.opts.onStatus?.("\u6B63\u5728\u505A\u5C40\u90E8\u8FB9\u7F18\u7CBE\u4FEE\u2026", "info");
+        const res = await this.client.segment({
+          image: crop.dataUrl,
+          points: [{ x: crop.localX, y: crop.localY, label }],
+          sig: crop.dataUrl,
+          multimask: true
+        });
+        const cropMask = await decodeMaskImage(res.mask_image, res.width, res.height);
+        const globalMask = this.committed ? this.committed.slice() : new Uint8Array(this.cw * this.ch);
+        const globalSoft = this.committedSoft ? this.committedSoft.slice() : new Uint8Array(this.cw * this.ch);
+        for (let yy = 0; yy < crop.cropH; yy++) {
+          const gy = crop.y0 + yy;
+          if (gy < 0 || gy >= this.ch) continue;
+          for (let xx = 0; xx < crop.cropW; xx++) {
+            const gx = crop.x0 + xx;
+            if (gx < 0 || gx >= this.cw) continue;
+            const cropIdx = yy * crop.cropW + xx;
+            const globalIdx = gy * this.cw + gx;
+            if (cropMask[cropIdx]) {
+              globalMask[globalIdx] = label === 1 ? 1 : 0;
+              globalSoft[globalIdx] = label === 1 ? 255 : 0;
+            }
+          }
+        }
+        this.committed = globalMask;
+        this.committedSoft = globalSoft;
+        this.points.push({ x, y, label });
+        this.renderer.setCommitted(this.committed, this.cw, this.ch);
+        this.afterCommit();
+        this.opts.onStatus?.("\u5C40\u90E8\u8FB9\u7F18\u7CBE\u4FEE\u5B8C\u6210\u3002", "info");
+      } catch (err) {
+        this.opts.onStatus?.("\u8FB9\u7F18\u7CBE\u4FEE\u5931\u8D25\uFF1A" + (err?.message || err), "error");
+      }
+    }
+    /** 降级模式（未装 MobileSAM）的局部修正：label=1 补回 / label=0 去除 */
+    applyRefine(x, y, label) {
+      this.ensureDims();
+      if (!this.committed) this.committed = new Uint8Array(this.cw * this.ch);
+      if (!this.committedSoft) this.committedSoft = new Uint8Array(this.cw * this.ch);
+      const next = label === 0 ? floodFillRemove(this.committed, this.cw, this.ch, x, y) : dilateAt(this.committed, this.cw, this.ch, x, y, 70);
+      this.committed = next;
+      const soft = this.committedSoft.slice();
+      for (let i = 0; i < soft.length; i++) soft[i] = next[i] ? 255 : 0;
+      this.committedSoft = soft;
+      this.renderer.setCommitted(next, this.cw, this.ch);
+      this.afterCommit();
+    }
+    /** 撤销上一步选区（恢复上次的点位集合 + 蒙版快照，无需重新推理） */
+    undo() {
+      if (!this.history.length) return;
+      const snap = this.history.pop();
+      this.points = snap.points.map((p) => ({ ...p }));
+      this.committed = snap.mask ? snap.mask.slice() : null;
+      this.committedSoft = snap.maskSoft ? snap.maskSoft.slice() : null;
+      if (this.committed) this.renderer.setCommitted(this.committed, this.cw, this.ch);
+      else this.renderer.setCommitted(null, 1, 1);
+      this.renderer.clearHover();
+      this.hover = null;
+      this.redraw();
+      this.opts.onSelectionChange?.(this.hasMask());
+    }
+    /** 清空全部选区（同时清空提示点集合） */
+    clearAll() {
+      this.history = [];
+      this.points = [];
+      this.committed = null;
+      this.committedSoft = null;
+      this.cw = 0;
+      this.ch = 0;
+      this.hover = null;
+      this.renderer.setCommitted(null, 1, 1);
+      this.renderer.clearHover();
+      this.redraw();
+      this.opts.onSelectionChange?.(false);
+    }
+    // ---------- 后端可用性探测 / 降级 ----------
+    async probeSam() {
+      if (this.probing) return;
+      this.probing = true;
+      try {
+        const st = await this.client.status();
+        this.samAvailable = st.available;
+        if (st.available) {
+          this.opts.onStatus?.("\u667A\u80FD\u70B9\u9009\u5DF2\u5C31\u7EEA\uFF1A\u5DF2\u81EA\u52A8\u9009\u4E2D\u4E3B\u4F53\uFF0C\u5DE6\u952E\u589E\u9009\u3001\u53F3\u952E\u51CF\u9009\uFF0C\u60AC\u6D6E\u53EF\u9884\u89C8\u3002", "info");
+        } else {
+          this.opts.onStatus?.("\u672A\u68C0\u6D4B\u5230 MobileSAM\uFF0C\u5DF2\u7528\u57FA\u7840\u6A21\u5F0F\u81EA\u52A8\u9009\u4E2D\u4E3B\u4F53\uFF08\u70B9\u51FB\u5FAE\u8C03\uFF09\u3002", "info");
         }
       } catch {
         this.samAvailable = false;
-        this.opts.onStatus?.("SAM \u670D\u52A1\u672A\u5C31\u7EEA\uFF0C\u5DF2\u5207\u6362\u4E3A\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\u6A21\u5F0F\u3002", "info");
+        this.opts.onStatus?.("SAM \u670D\u52A1\u672A\u5C31\u7EEA\uFF0C\u5DF2\u7528\u57FA\u7840\u6A21\u5F0F\u81EA\u52A8\u9009\u4E2D\u4E3B\u4F53\uFF08\u70B9\u51FB\u5FAE\u8C03\uFF09\u3002", "info");
+      } finally {
+        this.probing = false;
+        this.autoInitSubject();
       }
     }
-    // ---------- 业务链路 ----------
-    /** 防抖调用 SAM：每次打点（或撤销）后重新预测 */
-    requestSegment(allowLocalFallback = false) {
+    /**
+     * 进入智能点选时自动选中主体（复刻 WPS：进入工具即显示主体灰度蒙版）。
+     * 流程：
+     *   1) 用 u2net（轻量 u2netp）做整体主体检测，取原生软 Alpha；
+     *   2) 做 1px 灰度腐蚀，轻微缩边，减少边缘白边/光晕；
+     *   3) 以腐蚀后的软 mask 作为输出 Alpha，其二值化结果作为渲染遮罩；
+     *   4) 同时保存未腐蚀的 baseMask / baseMaskSoft，用于左键「增选」和悬浮预览，
+     *      保证薄毛发/胡须也能被点选加回。
+     * no_crop=1 保证返回的 mask 与原图同分辨率。
+     */
+    async autoInitSubject() {
       const src = this.opts.getSource();
-      if (!src || this.points.length === 0 || !this.mask) return;
-      if (this.pending) clearTimeout(this.pending);
-      this.pending = window.setTimeout(async () => {
-        this.opts.onStatus?.("\u6B63\u5728\u7CBE\u786E\u4FEE\u6B63\u2026", "info");
-        try {
-          const imageB64 = this.opts.getImageBase64 ? await this.opts.getImageBase64() : src.src;
-          const req = {
-            image: imageB64,
-            points: this.points.get(),
-            multimask: false
-          };
-          const res = await this.client.segment(req);
-          this.samAvailable = true;
-          this.setMask(await decodeMaskImage(res.mask_image, res.width, res.height), res.width, res.height);
-          this.opts.onStatus?.("\u4FEE\u6B63\u5B8C\u6210\uFF0C\u53EF\u7EE7\u7EED\u70B9\u51FB\u6216\u300C\u5F00\u59CB\u62A0\u56FE\u300D\u3002", "info");
-        } catch (err) {
-          const msg = err?.message || String(err);
-          if (msg.includes("404") || msg.includes("NetworkError")) {
-            this.samAvailable = false;
-            if (allowLocalFallback && this.points.length) {
-              const last = this.points.get()[this.points.length - 1];
-              this.localRefine(last.x, last.y, last.label);
-              return;
-            }
-          }
-          this.opts.onStatus?.("\u7CBE\u786E\u4FEE\u6B63\u5931\u8D25\uFF1A" + msg, "error");
+      const file = this.opts.getUploadFile?.();
+      if (!src || !file) return;
+      this.ensureDims();
+      try {
+        const preferredModel = typeof this.opts.removeBgModel === "function" ? this.opts.removeBgModel() : this.opts.removeBgModel || "bria-rmbg";
+        const form = new FormData();
+        form.append("image", file);
+        form.append("model", preferredModel);
+        form.append("no_crop", "1");
+        let r = await fetch(this.opts.removeBgEndpoint, { method: "POST", body: form });
+        let j = await r.json();
+        if (!j.ok && preferredModel !== "u2netp") {
+          this.opts.onStatus?.(`${preferredModel} \u672A\u5C31\u7EEA\uFF0C\u56DE\u9000\u5230 u2netp \u81EA\u52A8\u8BC6\u522B\u3002`, "info");
+          const fallback = new FormData();
+          fallback.append("image", file);
+          fallback.append("model", "u2netp");
+          fallback.append("no_crop", "1");
+          r = await fetch(this.opts.removeBgEndpoint, { method: "POST", body: fallback });
+          j = await r.json();
         }
-      }, 120);
-    }
-    /** SAM 不可用时，用前端形态学做快速修正 */
-    localRefine(x, y, label) {
-      if (!this.mask) return;
-      let next;
-      if (label === 0) {
-        next = floodFillRemove(this.mask, this.maskW, this.maskH, x, y);
-        this.opts.onStatus?.("\u5DF2\u53BB\u9664\u8BE5\u533A\u57DF\uFF08SAM \u672A\u90E8\u7F72\u65F6\u4F7F\u7528\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\uFF09\u3002", "info");
-      } else {
-        next = dilateAt(this.mask, this.maskW, this.maskH, x, y, 60);
-        this.opts.onStatus?.("\u5DF2\u8865\u56DE\u8BE5\u533A\u57DF\uFF08SAM \u672A\u90E8\u7F72\u65F6\u4F7F\u7528\u524D\u7AEF\u5FEB\u901F\u4FEE\u6B63\uFF09\u3002", "info");
-      }
-      this.setMask(next, this.maskW, this.maskH);
-    }
-    /** 撤销上一个点 */
-    undo() {
-      this.points.undo();
-      if (this.points.length) {
-        this.requestSegment(true);
-      } else {
-        this.autoInited = false;
-        this.autoInitMask();
+        if (!j.ok) throw new Error(j.error || "\u81EA\u52A8\u8BC6\u522B\u5931\u8D25");
+        const soft = await decodeSoftAlphaPng(j.result_url);
+        this.cw = src.naturalWidth;
+        this.ch = src.naturalHeight;
+        const eroded = erodeSoft(soft, this.cw, this.ch, 1);
+        const bin = binarize(eroded, 30);
+        this.baseMaskSoft = soft;
+        this.baseMask = binarize(soft, 30);
+        this.committedSoft = eroded;
+        this.committed = bin;
+        this.renderer.setCommitted(bin, this.cw, this.ch);
+        this.redraw();
+        this.opts.onSelectionChange?.(this.hasMask());
+        this.opts.onStatus?.("\u5DF2\u81EA\u52A8\u9009\u4E2D\u4E3B\u4F53\uFF0C\u53EF\u5DE6\u952E\u589E\u9009\u3001\u53F3\u952E\u51CF\u9009\uFF0C\u53CC\u51FB\u6216 Ctrl+\u70B9\u51FB\u505A\u8FB9\u7F18\u7CBE\u4FEE\u3002", "info");
+      } catch (err) {
+        this.opts.onStatus?.("\u81EA\u52A8\u9009\u4E2D\u4E3B\u4F53\u5931\u8D25\uFF1A" + (err?.message || err), "error");
       }
     }
-    /** 清空所有点 */
-    clearAll() {
-      this.points.clear();
-      this.autoInited = false;
-      this.autoInitMask();
-    }
-    clearMask() {
-      this.mask = null;
-      this.maskW = 0;
-      this.maskH = 0;
-      this.renderer.setMask(new Uint8Array(0), 0, 0);
-      this.redraw();
-    }
-    /** 重绘：原图 + 蒙版 + 提示点 */
+    // ---------- 渲染（原图 + 背景灰罩 + 悬浮蓝） ----------
     redraw() {
       const src = this.opts.getSource();
       const ctx = this.opts.ctx;
@@ -662,35 +1258,79 @@ var SmartClick = (() => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, this.opts.canvas.width, this.opts.canvas.height);
       ctx.restore();
+      const dw = src ? src.naturalWidth * v.scale : 0;
+      const dh = src ? src.naturalHeight * v.scale : 0;
       if (src) {
-        ctx.drawImage(src, v.offsetX, v.offsetY, src.naturalWidth * v.scale, src.naturalHeight * v.scale);
+        ctx.drawImage(src, v.offsetX, v.offsetY, dw, dh);
       }
-      if (this.mask) {
-        this.renderer.render(ctx, v.offsetX, v.offsetY, this.maskW * v.scale, this.maskH * v.scale);
+      if (this.committed) {
+        this.renderer.renderCommitted(ctx, v.offsetX, v.offsetY, dw, dh);
       }
-      if (this.mode === "click") {
-        this.renderer.drawPoints(
-          ctx,
-          (ix, iy) => this.opts.transformer.imageToCanvas(ix, iy),
-          this.points.get()
-        );
+      if (this.hover) {
+        this.renderer.renderHover(ctx, v.offsetX, v.offsetY, dw, dh);
       }
     }
     // ---------- 两种输出模式 ----------
-    /** 模式1：mask 直接作为 Alpha 通道 → 透明 PNG → 右侧预览 */
+    /** 模式1：软 Alpha mask → 透明 PNG → 右侧预览（边缘羽化，减少白边/锯齿） */
     async applyAsAlpha() {
       const src = this.opts.getSource();
-      if (!src || !this.mask) return null;
-      const png = await maskToTransparentPng(src, this.mask, this.maskW, this.maskH);
-      const cropped = await cropToAlphaBbox(png, 4);
-      this.opts.onPreview(cropped);
-      return cropped;
+      if (!src || !this.committed) {
+        console.log("[SmartClick.applyAsAlpha] skipped: no source or no committed mask");
+        return null;
+      }
+      if (!this.cw || !this.ch) {
+        console.warn("[SmartClick.applyAsAlpha] skipped: invalid dims", this.cw, this.ch);
+        return null;
+      }
+      try {
+        const alphaMask = this.committedSoft || this.committed;
+        const expectedLen = this.cw * this.ch;
+        console.log(
+          "[SmartClick.applyAsAlpha] dims=%dx%d maskLen=%d expected=%d soft=%s",
+          this.cw,
+          this.ch,
+          alphaMask.length,
+          expectedLen,
+          !!this.committedSoft
+        );
+        if (alphaMask.length !== expectedLen) {
+          console.warn("[SmartClick.applyAsAlpha] mask length mismatch");
+        }
+        const png = await maskToTransparentPng(src, alphaMask, this.cw, this.ch);
+        console.log(
+          "[SmartClick.applyAsAlpha] transparent png len=%d prefix=%s",
+          png.length,
+          png.slice(0, 60)
+        );
+        let cropped = png;
+        try {
+          cropped = await cropToAlphaBbox(png, 4);
+          console.log(
+            "[SmartClick.applyAsAlpha] cropped png len=%d prefix=%s",
+            cropped.length,
+            cropped.slice(0, 60)
+          );
+        } catch (cropErr) {
+          console.warn("[SmartClick.applyAsAlpha] cropToAlphaBbox failed, fallback to uncropped", cropErr);
+        }
+        if (!cropped || typeof cropped !== "string" || !cropped.startsWith("data:image/png;base64,")) {
+          console.error("[SmartClick.applyAsAlpha] invalid pngUrl", cropped);
+          this.opts.onStatus?.("\u751F\u6210\u7684\u9884\u89C8\u6570\u636E\u5F02\u5E38\uFF0C\u8BF7\u91CD\u8BD5", "error");
+          return null;
+        }
+        this.opts.onPreview(cropped);
+        return cropped;
+      } catch (err) {
+        console.error("[SmartClick.applyAsAlpha] failed", err);
+        this.opts.onStatus?.("\u751F\u6210\u9884\u89C8\u5931\u8D25\uFF1A" + (err?.message || err), "error");
+        return null;
+      }
     }
     /** 模式2：mask 融合进 u2net 管线 */
     async fuseWithU2net(uploadFile, endpoint, model = "u2net") {
       const src = this.opts.getSource();
-      if (!src || !this.mask) return null;
-      const maskPng = maskToBase64Png(this.mask, this.maskW, this.maskH);
+      if (!src || !this.committed) return null;
+      const maskPng = maskToBase64Png(this.committed, this.cw, this.ch);
       const form = new FormData();
       form.append("image", uploadFile);
       form.append("sam_mask", maskPng);

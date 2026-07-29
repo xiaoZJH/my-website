@@ -1,5 +1,5 @@
 // types.ts — 智能点选抠图（Smart Click Matting）共享类型定义
-// 仅依赖标准 DOM/Canvas，无框架，可直接被现有 app.js（经 tsc 编译后）引入。
+// 仅依赖标准 DOM/Canvas，无框架，可直接被现有 app.js（经 esbuild 编译后）引入。
 
 /** 提示点：原图像素坐标 + 正负标签 */
 export interface PromptPoint {
@@ -13,11 +13,11 @@ export interface PromptPoint {
 export interface SamRequest {
   /** 原图 base64，可带 `data:image/...;base64,` 前缀 */
   image: string;
-  /** 累积的全部提示点（每次打点都带上全部点，SAM 会基于所有点重新预测） */
+  /** 单点提示（每次点击单点即可，后端返回该点对应的完整物体 mask） */
   points: PromptPoint[];
-  /** 上一次返回的 mask 二值图 base64（迭代优化可选，不传则首轮） */
-  mask_prev?: string | null;
-  /** 是否返回多个候选 mask，默认 false（取置信度最高者） */
+  /** 原图 base64 作为缓存键，告诉后端「同一张图不必重复编码」 */
+  sig?: string;
+  /** 是否返回多个候选 mask，默认 false（取置信度最高者，更快） */
   multimask?: boolean;
 }
 
@@ -28,11 +28,17 @@ export interface SamResponse {
   width: number;
   /** mask 高（= 原图高，像素） */
   height: number;
-  /** 二值 mask PNG 的 base64（白色=前景）。前端解码即得 0/1 数组，推荐用这个 */
+  /** 二值 mask PNG 的 base64（白色=前景）。前端解码即得 0/1 数组 */
   mask_image?: string;
-  /** 一维数组（长度 = width*height，值 0/1）。仅小图调试用；生产环境用 mask_image 更省流量 */
-  mask?: number[] | null;
   /** 预测置信度（0~1） */
   score?: number;
+  error?: string;
+}
+
+/** 后端 → 前端 SAM 可用性探测响应体 */
+export interface SamStatusResponse {
+  ok: boolean;
+  /** MobileSAM / 权重是否就绪 */
+  available: boolean;
   error?: string;
 }

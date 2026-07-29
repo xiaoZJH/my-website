@@ -20,6 +20,11 @@ tools/watermark-remover/uploads/
 tools/watermark-remover/results/
 tools/watermark-remover/watermarks/
 
+# SAM 模型权重（较大，不入库；首次启动自动下载或部署时手动放置）
+tools/watermark-remover/sam/weights/
+*.pt
+*.pth
+
 # 本地工作记忆
 .workbuddy/
 

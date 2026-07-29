@@ -704,7 +704,7 @@
     view.innerHTML = `
       <section class="section tool-fullpage">
         <div class="section__head">
-          <div><h2 class="section__title">图片 / 视频去水印</h2><div class="section__sub">涂抹水印区域，一键无痕修复 · 本地运行</div></div>
+          <div><h2 class="section__title">净影</h2><div class="section__sub">图片 / 视频去水印 · 涂抹无痕修复 · 本地运行</div></div>
           <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
         </div>
         <div id="wm-box" class="wm-box">
@@ -792,10 +792,8 @@ C:\\path\\to\\python -m venv .venv
     }
 
     const models = [
-      { value: 'u2netp', label: 'u2netp · 轻量快速（推荐）' },
-      { value: 'u2net', label: 'u2net · 高精度' },
-      { value: 'u2net_human_seg', label: 'u2net_human_seg · 人像专用' },
-      { value: 'silueta', label: 'silueta · 剪影' },
+      { value: 'bria-rmbg', label: 'RMBG-1.4 · 高精度（推荐）' },
+      { value: 'u2net', label: 'u2net · 备用' },
     ];
     const firstReady = models.find((m) => modelStatus[m.value]?.ready)?.value || 'u2netp';
     const anyReady = models.some((m) => modelStatus[m.value]?.ready);
@@ -810,7 +808,11 @@ C:\\path\\to\\python -m venv .venv
     view.innerHTML = `
       <section class="section tool-fullpage">
         <div class="section__head">
-          <div><h2 class="section__title">AI 智能抠图</h2><div class="section__sub">框选保留区域，精准抠出主体 · 导出透明 PNG · 本地运行</div></div>
+          <div class="rb-brandhead">
+            <span class="rb-eyebrow">AI Background Removal</span>
+            <h2 class="section__title rb-title">离境</h2>
+            <div class="section__sub rb-sub">让主体优雅离场 · 框选或智能点选，一键导出透明 PNG，全程本地运行</div>
+          </div>
           <a class="link-more" href="#/tools" data-link>返回工具箱 →</a>
         </div>
         <div class="rb-card reveal">
@@ -819,9 +821,12 @@ C:\\path\\to\\python -m venv .venv
           <div class="rb-upload" id="rbUpload">
             <input type="file" id="rbFile" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
             <div class="rb-drop" id="rbDrop" tabindex="0" role="button" aria-label="上传图片">
-              <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <p>拖拽图片到此处，或点击上传</p>
-              <span>支持 JPG / PNG / WebP / BMP，建议小于 10MB</span>
+              <span class="rb-drop__halo"></span>
+              <span class="rb-drop__icon">
+                <svg viewBox="0 0 24 24" width="50" height="50" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </span>
+              <p class="rb-drop__title">拖拽图片到此处，或点击上传</p>
+              <span class="rb-drop__hint">支持 JPG / PNG / WebP / BMP · 建议小于 10MB · 图片全程本地处理，不会上传</span>
             </div>
           </div>
           <!-- 编辑器 -->
@@ -829,16 +834,19 @@ C:\\path\\to\\python -m venv .venv
               <div class="rb-toolbar">
                 <div class="rb-tool-modes">
                   <span class="rb-mode-label">选区工具</span>
-                  <button class="btn btn--toggle is-active" id="rbModeCrop" type="button">框选</button>
-                  <button class="btn btn--toggle" id="rbModeClick" type="button">智能点选</button>
+                  <div class="rb-seg">
+                    <button class="btn btn--toggle is-active" id="rbModeCrop" type="button">框选</button>
+                    <button class="btn btn--toggle" id="rbModeClick" type="button">智能点选</button>
+                  </div>
                   <select id="rbSamMode" class="rb-select" title="智能点选输出模式" hidden>
                     <option value="alpha">掩码直接抠图</option>
                     <option value="fuse">融合 u2net 优化</option>
                   </select>
-                  <button class="btn btn--ghost" id="rbUndo" type="button" disabled>撤销点</button>
-                  <button class="btn btn--ghost" id="rbClearPts" type="button" disabled>清空点</button>
+                  <button class="btn btn--ghost" id="rbUndo" type="button" disabled>撤销</button>
+                  <button class="btn btn--ghost" id="rbClearPts" type="button" disabled>清空</button>
                 </div>
-                <div class="rb-model">
+                <div class="rb-tool-aside">
+                  <div class="rb-model">
                   <label for="rbModel">AI 模型</label>
                   <select id="rbModel" class="rb-select">${modelOptions}</select>
                 </div>
@@ -846,6 +854,7 @@ C:\\path\\to\\python -m venv .venv
                   <button class="btn btn--primary" id="rbProcess" type="button">开始抠图</button>
                   <button class="btn btn--secondary" id="rbDownload" type="button" disabled>下载 PNG</button>
                   <button class="btn btn--ghost" id="rbReset" type="button">重新上传</button>
+                </div>
                 </div>
               </div>
             <div class="rb-workspace">
@@ -862,6 +871,7 @@ C:\\path\\to\\python -m venv .venv
               <div class="rb-panel rb-panel--result">
                 <div class="rb-panel__head">
                   <span class="rb-panel__title">预览</span>
+                  <span class="rb-panel__tag">透明 PNG</span>
                 </div>
                 <div class="rb-preview-wrap" id="rbPreviewWrap">
                   <div class="rb-result" id="rbResult">
@@ -908,6 +918,7 @@ C:\\path\\to\\python -m venv .venv
       transformer,
       endpoint: '/watermark-remover/api/sam-segment',
       removeBgEndpoint: '/watermark-remover/api/remove-bg',
+      removeBgModel: () => modelSel.value,
       getImageBase64: () => new Promise((res, rej) => {
         if (!currentFile) return rej(new Error('无源文件'));
         const r = new FileReader();
@@ -917,17 +928,40 @@ C:\\path\\to\\python -m venv .venv
       }),
       getUploadFile: () => currentFile,
       onPreview: (pngUrl) => {
+        console.log('[app.onPreview] url len=%d prefix=%s', pngUrl?.length, pngUrl?.slice(0, 60));
+        if (!pngUrl || typeof pngUrl !== 'string' || !pngUrl.startsWith('data:image/png;base64,')) {
+          console.error('[app.onPreview] invalid pngUrl', pngUrl);
+          setError('预览数据异常，请打开浏览器控制台查看详情');
+          return;
+        }
         afterImg.onload = () => {
           downloadBtn.disabled = false;
           emptyTip.style.display = 'none';
           setStatus('抠图完成 ✔ 可下载透明 PNG，或继续修正。', 'info');
         };
-        afterImg.onerror = () => setError('结果图片加载失败，请重试');
+        afterImg.onerror = (e) => {
+          console.error('[app.onPreview] image load error', e, 'src len=', afterImg.src?.length);
+          setError('结果图片加载失败，请重试');
+        };
         afterImg.src = pngUrl;
         currentResult = pngUrl;
       },
       onStatus: setStatus,
-      onPointsChange: (n) => { undoBtn.disabled = n === 0; clearPtsBtn.disabled = n === 0; },
+      onSelectionChange: (has) => {
+        undoBtn.disabled = !has;
+        clearPtsBtn.disabled = !has;
+        if (has && samModeSel.value === 'alpha') {
+          smartTool.applyAsAlpha().catch((e) => {
+            console.error('[app.onSelectionChange] applyAsAlpha error', e);
+            setError('生成预览失败：' + (e?.message || e));
+          });
+        } else if (!has) {
+          afterImg.src = '';
+          emptyTip.style.display = '';
+          downloadBtn.disabled = true;
+          currentResult = null;
+        }
+      },
     });
 
     let currentResult = null;
@@ -1161,6 +1195,7 @@ C:\\path\\to\\python -m venv .venv
       editor.hidden = false;
       crop = null;
       clearCropBtn.disabled = true;
+      smartTool.resetForNewImage();
       fitCanvas();
       afterImg.src = '';
       emptyTip.style.display = '';
@@ -1212,7 +1247,7 @@ C:\\path\\to\\python -m venv .venv
     // 「开始抠图」按模式分流：点选模式走 SAM 结果输出，框选模式走原 u2net 管线
     processBtn.addEventListener('click', async () => {
       if (smartTool.getMode() === 'click') {
-        if (!smartTool.hasMask()) { setError('请先在图上打点（左键保留 / 右键剔除）'); return; }
+        if (!smartTool.hasMask()) { setError('请先在画面左键点击保留要抠出的区域（可多次点击叠加，右键移除）'); return; }
         setLoading('正在生成透明 PNG…');
         processBtn.disabled = true;
         try {
@@ -1259,7 +1294,7 @@ C:\\path\\to\\python -m venv .venv
       modeCropBtn.classList.toggle('is-active', !click);
       samModeSel.hidden = !click;
       hint.textContent = click
-        ? '已自动识别主体（红色蒙版）。点击红色区域=去除，点击背景=补回；滚轮缩放，空格+拖拽平移；Ctrl+Z 撤销。'
+        ? '悬浮预览物体（淡蓝），左键单击保留，右键单击移除；滚轮缩放，空格+拖拽平移；Ctrl+Z 撤销。'
         : '在图片上拖拽框选要保留的区域（如小猫）。不选则抠全图；双击选区可清除。框选后点「开始抠图」。';
       fitCanvas();
     }
@@ -1267,6 +1302,14 @@ C:\\path\\to\\python -m venv .venv
     modeCropBtn.addEventListener('click', () => { if (smartTool.getMode() === 'click') setMode('crop'); });
     undoBtn.addEventListener('click', () => smartTool.undo());
     clearPtsBtn.addEventListener('click', () => smartTool.clearAll());
+    samModeSel.addEventListener('change', () => {
+      if (smartTool.getMode() === 'click' && samModeSel.value === 'alpha' && smartTool.hasMask()) {
+        smartTool.applyAsAlpha().catch((e) => {
+          console.error('[app.samModeSel.change] applyAsAlpha error', e);
+          setError('生成预览失败：' + (e?.message || e));
+        });
+      }
+    });
 
     window.addEventListener('resize', () => { if (sourceImage && !editor.hidden) fitCanvas(); });
 

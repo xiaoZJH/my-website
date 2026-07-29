@@ -14,13 +14,13 @@
 
   const TOOLS = [
     {
-      id: 'watermark', title: '图片 / 视频去水印', desc: '涂抹水印区域，一键无痕修复', icon: I.wm,
+      id: 'watermark', title: '净影', desc: '图片 / 视频去水印 · 涂抹无痕修复', icon: I.wm,
       fullPage: true,
       render: () => `<div class="field"><p style="color:var(--text-soft)">正在打开去水印工具…</p></div>`,
       mount: () => {},
     },
     {
-      id: 'remove-bg', title: 'AI 智能抠图', desc: '一键移除背景，导出透明 PNG', icon: I.removebg,
+      id: 'remove-bg', title: '离境', desc: 'AI 智能抠图 · 一键移除背景，导出透明 PNG', icon: I.removebg,
       fullPage: true,
       render: () => `<div class="field"><p style="color:var(--text-soft)">正在打开抠图工具…</p></div>`,
       mount: () => {},

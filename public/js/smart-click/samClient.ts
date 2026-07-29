@@ -1,21 +1,26 @@
 // samClient.ts — 请求类：封装前端 → 后端 SAM 服务的通信
-import type { SamRequest, SamResponse } from './types';
+import type { SamRequest, SamResponse, SamStatusResponse } from './types';
 
 export class SamClient {
-  constructor(private endpoint: string) {}
+  private statusUrl: string;
+
+  constructor(private endpoint: string) {
+    // 由 segment 地址推导 status 地址（/api/sam-segment → /api/sam-status）
+    this.statusUrl = endpoint.replace(/\/sam-segment$/, '/sam-status');
+  }
+
+  /** 探测 MobileSAM / 权重是否就绪 */
+  async status(): Promise<SamStatusResponse> {
+    const r = await fetch(this.statusUrl, { method: 'GET' });
+    if (!r.ok) throw new Error('SAM 状态接口返回 ' + r.status);
+    return (await r.json()) as SamStatusResponse;
+  }
 
   /**
    * 调用 SAM 分割接口。
    * 请求示例（前端发出）：
    *   POST /api/sam-segment
-   *   Content-Type: application/json
-   *   {
-   *     "image": "data:image/png;base64,iVBORw0KGgo...",   // 原图 base64
-   *     "points": [                                        // 累积提示点
-   *       { "x": 820, "y": 410, "label": 1 },              // 左键：保留该物体
-   *       { "x": 300, "y": 200, "label": 0 }               // 右键：剔除该处背景
-   *     ]
-   *   }
+   *   { "image": "data:image/png;base64,...", "points": [{ "x": 820, "y": 410, "label": 1 }], "sig": "<原图base64>" }
    * 后端返回：{ ok, width, height, mask_image: "data:image/png;base64,...", score }
    */
   async segment(req: SamRequest, signal?: AbortSignal): Promise<SamResponse> {
