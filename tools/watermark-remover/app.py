@@ -75,8 +75,16 @@ bp = Blueprint("wm", __name__, url_prefix=BASE_PATH or None)
 
 # 智能点选（Smart Click Matting）：挂载 MobileSAM/TinySAM 点击分割路由
 # 对外经 Node 反代为 /watermark-remover/api/sam-segment
-from sam.sam_service import register_sam
-register_sam(bp)
+# SAM 为可选能力：若 torch/mobile_sam 未安装或导入失败，仅禁用智能点选，
+# 不影响框选抠图主功能（避免整服务因可选依赖崩溃）。
+try:
+    from sam.sam_service import register_sam
+    SAM_AVAILABLE = True
+    register_sam(bp)
+    app.logger.info("SAM 智能点选已启用")
+except Exception as _sam_err:
+    SAM_AVAILABLE = False
+    app.logger.warning("SAM 智能点选不可用（不影响框选抠图）：%s", _sam_err)
 
 
 def allowed_file(filename: str) -> bool:
@@ -856,6 +864,7 @@ def remove_bg_models_status():
         "ok": True,
         "models": remove_bg_model_status(),
         "home": U2NET_HOME,
+        "sam_available": SAM_AVAILABLE,
     })
 
 

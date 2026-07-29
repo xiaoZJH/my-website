@@ -783,10 +783,11 @@ C:\\path\\to\\python -m venv .venv
   async function renderRemoveBg() {
     // 先查询后端哪些模型已在本地缓存，未就绪的模型禁用，避免触发 GitHub 下载超时
     let modelStatus = {};
+    let samAvailable = false;
     try {
       const r = await fetch('/watermark-remover/api/remove-bg-models');
       const j = await r.json();
-      if (j.ok) modelStatus = j.models || {};
+      if (j.ok) { modelStatus = j.models || {}; samAvailable = !!j.sam_available; }
     } catch (_) {
       // 如果查询失败，仍允许渲染，后端会做二次校验
     }
@@ -836,7 +837,7 @@ C:\\path\\to\\python -m venv .venv
                   <span class="rb-mode-label">选区工具</span>
                   <div class="rb-seg">
                     <button class="btn btn--toggle is-active" id="rbModeCrop" type="button">框选</button>
-                    <button class="btn btn--toggle" id="rbModeClick" type="button">智能点选</button>
+                    <button class="btn btn--toggle" id="rbModeClick" type="button"${samAvailable ? '' : ' disabled'}>智能点选${samAvailable ? '' : ' · 未启用'}</button>
                   </div>
                   <select id="rbSamMode" class="rb-select" title="智能点选输出模式" hidden>
                     <option value="alpha">掩码直接抠图</option>
@@ -1288,6 +1289,11 @@ C:\\path\\to\\python -m venv .venv
 
     // 工具栏：框选 / 智能点选 切换
     function setMode(next) {
+      if (next === 'click' && !samAvailable) {
+        setError('智能点选功能暂不可用（SAM 模型未加载），请使用「框选」模式抠图。');
+        fitCanvas();
+        return;
+      }
       const click = next === 'click';
       smartTool.setMode(next);
       modeClickBtn.classList.toggle('is-active', click);
