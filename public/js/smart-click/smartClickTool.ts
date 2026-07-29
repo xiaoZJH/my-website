@@ -96,12 +96,13 @@ export class SmartClickTool {
     return !!this.committed && this.committed.some((v) => v !== 0);
   }
 
-  /** 切换工具模式；切离 'click' 时自动清除选区与蒙版 */
+  /** 切换工具模式；切离 'click' 时自动清除选区与蒙版并解绑事件 */
   setMode(m: ToolMode) {
     if (m === this.mode) return;
     this.mode = m;
     this.opts.canvas.style.cursor = 'default'; // WPS：智能点选时光标为默认指针
     if (m !== 'click') {
+      this.bindOrUnbind(false);
       this.clearAll();
     } else {
       this.resetState();
@@ -618,6 +619,7 @@ export class SmartClickTool {
 
   // ---------- 渲染（原图 + 背景灰罩 + 悬浮蓝） ----------
   redraw() {
+    if (this.mode !== 'click') return;
     const src = this.opts.getSource();
     const ctx = this.opts.ctx;
     const v = this.opts.transformer.getView();
