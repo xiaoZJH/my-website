@@ -21,18 +21,20 @@
   let landingSeaStop = null;
   const enterBtn = document.getElementById('enterBtn');
 
-  /* ---------- 个人信息（请改成你自己的） ---------- */
+  /* ---------- 个人信息 ---------- */
   const PROFILE = {
     name: 'Mr.zhong',
     initials: 'M',
-    avatar: '/images/avatar-main.jpg', // 头像图片 URL，留空则显示 initials
+    avatar: '/images/avatar-main.jpg',
     role: '全栈开发者 · 界面设计师 · 开源爱好者',
     bio: '热爱用代码把想法变成现实，崇尚本地优先与隐私友好的设计。这里收集了我日常高频使用的小工具，以及一个随手记录想法的博客角落。',
+    quote: '把每一次到达，都变成值得停留的瞬间。',
     location: '中国',
+    status: '开放合作中',
     links: [
-      { label: 'GitHub', url: 'https://github.com/yourname' },
-      { label: 'Email', url: 'mailto:you@example.com' },
-      { label: 'Twitter', url: 'https://twitter.com/yourname' },
+      { label: 'GitHub', url: 'https://github.com/xiaoZJH' },
+      { label: 'Email', url: 'mailto:hello@mrzhong.dev' },
+      { label: 'Twitter', url: 'https://twitter.com/mrzhong_dev' },
     ],
     stats: [
       { num: '2+', label: '年经验' },
@@ -585,67 +587,87 @@
     }).join('');
     const recent = (posts || []).slice(0, 3);
     const avatarInner = PROFILE.avatar
-      ? `<img class="profile-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
-      : `<span class="profile-avatar__initials">${esc(PROFILE.initials)}</span>`;
-    const statsHtml = PROFILE.stats.map((s) => `<div class="profile-stat"><span class="profile-stat__num">${esc(s.num)}</span><span class="profile-stat__label">${esc(s.label)}</span></div>`).join('');
-    const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r) => `<li>${esc(r)}</li>`)).join('');
-    const cardsHtml = PROFILE.cards.map((c, i) => `<article class="card profile-card" style="--i:${i}"><h3 class="profile-card__title">${esc(c.title)}</h3><p class="profile-card__text">${esc(c.text)}</p></article>`).join('');
-    const statCard = `<article class="card profile-card profile-card--stats" style="--i:3">
-      <h3 class="profile-card__title">站点统计</h3>
-      <div class="profile-card__stats">
-        <div class="profile-stat"><span class="profile-stat__num" id="s-total">0</span><span class="profile-stat__label">累计访问</span></div>
-        <div class="profile-stat"><span class="profile-stat__num" id="s-today">0</span><span class="profile-stat__label">今日</span></div>
-        <div class="profile-stat"><span class="profile-stat__num" id="s-unique">0</span><span class="profile-stat__label">独立访客</span></div>
-        <div class="profile-stat"><span class="profile-stat__num" id="s-week">0</span><span class="profile-stat__label">近 7 天</span></div>
+      ? `<img class="zh-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
+      : `<span class="zh-avatar__initials">${esc(PROFILE.initials)}</span>`;
+    const statsHtml = PROFILE.stats.map((s, i) => `<div class="zh-stat" style="--i:${i}"><span class="zh-stat__num">${esc(s.num)}</span><span class="zh-stat__label">${esc(s.label)}</span></div>`).join('');
+    const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r, i) => `<li style="--i:${i}">${esc(r)}</li>`)).join('');
+    const cardsHtml = PROFILE.cards.map((c, i) => `<article class="card zh-card zh-card--about" style="--i:${i}"><h3 class="zh-card__title">${esc(c.title)}</h3><p class="zh-card__text">${esc(c.text)}</p></article>`).join('');
+    const statGrid = `
+      <div class="zh-stats-grid">
+        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-total">0</span><span class="zh-stat__label">累计访问</span></div>
+        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-today">0</span><span class="zh-stat__label">今日</span></div>
+        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-unique">0</span><span class="zh-stat__label">独立访客</span></div>
+        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-week">0</span><span class="zh-stat__label">近 7 天</span></div>
       </div>
-      <div class="bars">${bars}</div>
-    </article>`;
+      <div class="bars zh-bars">${bars}</div>`;
+    const contactUrl = esc((PROFILE.links && (PROFILE.links[1] || PROFILE.links[0])) ? (PROFILE.links[1] || PROFILE.links[0]).url : '#/');
 
     view.innerHTML = `
-      <section class="profile-hero stagger">
-        <div class="profile-hero__visual" style="--i:0">
-          <div class="profile-avatar">
-            <div class="profile-avatar__inner">${avatarInner}</div>
-            <div class="profile-avatar__ring" aria-hidden="true"></div>
-            <div class="profile-avatar__glow" aria-hidden="true"></div>
+      <section class="zh-hero stagger" aria-label="个人简介">
+        <div class="zh-hero__grid">
+          <div class="zh-hero__name-col">
+            <span class="zh-hero__label">你好，我是</span>
+            <h1 class="zh-hero__name">
+              <span class="zh-hero__name-main">${esc(PROFILE.name)}</span>
+              <span class="zh-hero__name-line" aria-hidden="true"></span>
+            </h1>
+            <ul class="zh-hero__roles">${rolePills}</ul>
+            <p class="zh-hero__bio">${esc(PROFILE.bio)}</p>
+            <div class="zh-hero__actions">
+              <a class="zh-btn zh-btn--primary zh-magnetic" href="#/tools" data-link>浏览工具箱</a>
+              <a class="zh-btn zh-btn--ghost zh-magnetic" href="${contactUrl}">联系我</a>
+            </div>
+          </div>
+          <div class="zh-hero__visual-col">
+            <div class="zh-avatar">
+              <div class="zh-avatar__frame">${avatarInner}</div>
+              <div class="zh-avatar__ring" aria-hidden="true"></div>
+              <div class="zh-avatar__orb" aria-hidden="true"></div>
+              <div class="zh-avatar__status"><span class="zh-avatar__status-dot" aria-hidden="true"></span><span>${esc(PROFILE.status)}</span></div>
+            </div>
+            <div class="zh-hero__shape zh-hero__shape--circle" aria-hidden="true"></div>
+            <div class="zh-hero__shape zh-hero__shape--line" aria-hidden="true"></div>
           </div>
         </div>
-        <div class="profile-hero__content" style="--i:1">
-          <span class="hero__eyebrow">你好，我是</span>
-          <h1 class="profile-hero__name">${esc(PROFILE.name)}</h1>
-          <ul class="profile-role-pills">${rolePills}</ul>
-          <p class="profile-hero__bio">${esc(PROFILE.bio)}</p>
-          <div class="profile-hero__actions">
-            <a class="btn btn--primary" href="#/tools" data-link>浏览工具箱</a>
-            <a class="btn btn--ghost" href="${esc((PROFILE.links && (PROFILE.links[1] || PROFILE.links[0])) ? (PROFILE.links[1] || PROFILE.links[0]).url : '#/')}">联系我</a>
+        <div class="zh-hero__stats">${statsHtml}</div>
+      </section>
+
+      <section class="zh-section zh-about" aria-label="关于我">
+        <div class="zh-section__head">
+          <span class="zh-section__num">01</span>
+          <div><h2 class="zh-section__title">关于我</h2><p class="zh-section__sub">一些简单介绍与近况</p></div>
+        </div>
+        <div class="zh-about__grid stagger">
+          <blockquote class="zh-about__quote"><span class="zh-quote__mark">“</span>${esc(PROFILE.quote)}<span class="zh-quote__mark">”</span></blockquote>
+          <div class="zh-about__cards">${cardsHtml}</div>
+          <div class="card zh-about__stats">
+            <h3 class="zh-card__title">站点统计</h3>
+            ${statGrid}
           </div>
-          <div class="profile-hero__stats">${statsHtml}</div>
         </div>
       </section>
 
-      <section class="section">
-        <div class="section__head"><div><h2 class="section__title">关于我</h2><div class="section__sub">一些简单介绍</div></div></div>
-        <div class="grid grid--profile stagger">${cardsHtml}${statCard}</div>
-      </section>
-
-      <section class="section">
-        <div class="section__head">
-          <div><h2 class="section__title">工具箱</h2><div class="section__sub">点击任意卡片，立即开用</div></div>
-          <a class="link-more" href="#/tools" data-link>查看全部 →</a>
+      <section class="zh-section zh-tools" aria-label="工具箱">
+        <div class="zh-section__head">
+          <span class="zh-section__num">02</span>
+          <div><h2 class="zh-section__title">工具箱</h2><p class="zh-section__sub">亲手做的，本地就能跑</p></div>
+          <a class="zh-link-arrow" href="#/tools" data-link>查看全部</a>
         </div>
         ${toolChips()}
-        <div class="grid grid--tools tool-grid stagger">${toolGridHtml('全部')}</div>
+        <div class="grid grid--tools zh-tools__grid stagger">${toolGridHtml('全部')}</div>
       </section>
 
-      <section class="section">
-        <div class="section__head">
-          <div><h2 class="section__title">最新博客</h2><div class="section__sub">随手记录的想法与笔记</div></div>
-          <a class="link-more" href="#/blog" data-link>全部文章 →</a>
+      <section class="zh-section zh-blog" aria-label="最新博客">
+        <div class="zh-section__head">
+          <span class="zh-section__num">03</span>
+          <div><h2 class="zh-section__title">最新博客</h2><p class="zh-section__sub">随手记录的想法与笔记</p></div>
+          <a class="zh-link-arrow" href="#/blog" data-link>全部文章</a>
         </div>
-        <div class="grid grid--posts stagger">${recent.map((p, i) => postCard(p, i)).join('')}</div>
+        <div class="zh-blog__list stagger">${recent.map((p, i) => postCard(p, i)).join('')}</div>
       </section>`;
     bindReveal();
     runHomeMotion(stats);
+    initHomeFx();
   }
 
   function renderTools() {
@@ -2039,6 +2061,37 @@ C:\\path\\to\\python -m venv .venv
     if (reduce) return;
     requestAnimationFrame(() => {
       document.querySelectorAll('.bar__fill').forEach((b) => { b.style.height = (b.getAttribute('data-h') || 4) + 'px'; });
+    });
+  }
+
+  function initHomeFx() {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fine = window.matchMedia('(hover: hover)').matches;
+    if (reduce || !fine) return;
+
+    // 装饰线条跟随鼠标轻微视差（圆环已有自转，不动 transform）
+    const hero = document.querySelector('.zh-hero');
+    const lineShape = document.querySelector('.zh-hero__shape--line');
+    if (hero && lineShape) {
+      hero.addEventListener('mousemove', (e) => {
+        const r = hero.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - .5;
+        const y = (e.clientY - r.top) / r.height - .5;
+        lineShape.style.transform = `translate(${x * 14}px, ${y * 14}px) rotate(12deg)`;
+      }, { passive: true });
+      hero.addEventListener('mouseleave', () => { lineShape.style.transform = ''; });
+    }
+
+    // 磁吸按钮
+    document.querySelectorAll('.zh-magnetic').forEach((btn) => {
+      if (btn.dataset.mag) return; btn.dataset.mag = '1';
+      btn.addEventListener('mousemove', (e) => {
+        const r = btn.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / r.width * 10;
+        const dy = (e.clientY - (r.top + r.height / 2)) / r.height * 10;
+        btn.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+      });
+      btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
     });
   }
 
