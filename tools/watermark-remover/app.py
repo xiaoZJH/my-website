@@ -315,32 +315,33 @@ def remove_watermark_batch():
         if int(mask.sum()) == 0:
             continue
         res = enhance_result(img, mask, algorithm, radius)
-        out_name = f"{batch_id}_{idx:02d}.png"
-        cv2.imwrite(os.path.join(RESULT_DIR, out_name), res)
+        ok, png_buf = cv2.imencode(".png", res)
+        if not ok:
+            continue
+        png_bytes = png_buf.tobytes()
         results.append({
             "name": f.filename,
-            "url": img_to_data_uri(res),
+            "url": "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"),
             "width": int(img.shape[1]),
             "height": int(img.shape[0]),
         })
-        zip_entries.append((out_name, f.filename))
+        zip_entries.append((png_bytes, f.filename))
 
     if not results:
         return jsonify({"ok": False, "error": "没有可处理的图片"}), 400
 
-    zip_name = f"{batch_id}_clean.zip"
-    zip_path = os.path.join(RESULT_DIR, zip_name)
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, (out_name, orig_name) in enumerate(zip_entries, 1):
+    import io as _io
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, (png_bytes, orig_name) in enumerate(zip_entries, 1):
             stem = os.path.splitext(os.path.basename(orig_name))[0]
-            zf.write(os.path.join(RESULT_DIR, out_name),
-                     arcname=f"{i:02d}_去水印_{stem}.png")
+            zf.writestr(f"{i:02d}_去水印_{stem}.png", png_bytes)
 
     return jsonify({
         "ok": True,
         "count": len(results),
         "results": results,
-        "zip_url": f"{BASE_PATH}/results/{zip_name}",
+        "zip_data": "data:application/zip;base64," + base64.b64encode(buf.getvalue()).decode("ascii"),
     })
 
 

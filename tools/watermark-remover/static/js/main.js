@@ -659,7 +659,7 @@
     if (!data.ok) { showToast(data.error || "批量处理失败，请重试"); return; }
 
     batchSummary.textContent = `共处理 ${data.count} 张图片，点击缩略图可查看大图`;
-    zipBtn.href = data.zip_url;
+    zipBtn.href = data.zip_data || data.zip_url;
     zipBtn.setAttribute("download", "去水印批量结果.zip");
 
     batchGrid.innerHTML = "";
