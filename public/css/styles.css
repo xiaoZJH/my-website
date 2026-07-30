@@ -1685,7 +1685,7 @@ img { max-width: 100%; display: block; }
 
 /* ---------- Landing：右上角 3D 图标球装饰（来自 icon-cloud-sphere） ---------- */
 .wl-sphere{
-  position: fixed; top: 92px; right: -64px;     /* 右上角、下移一点点，避开顶部栏 */
+  position: fixed; top: 92px; left: -64px;      /* 左上角、下移一点点，避开顶部栏 */
   width: 460px; height: 460px;
   z-index: 3;                                    /* 在 .wl-glow(z1) 之上、.wl-wrap(z2) 之上 */
   pointer-events: none;                          /* 纯装饰，不挡交互 */
@@ -1720,5 +1720,5 @@ img { max-width: 100%; display: block; }
   .wl-sphere .icon-card{ animation:none!important; transition:none!important; }
 }
 @media (max-width: 720px){
-  .wl-sphere{ transform: scale(.6); transform-origin: top right; top: 84px; right: -96px; }
+  .wl-sphere{ transform: scale(.6); transform-origin: top left; top: 84px; left: -96px; }
 }
