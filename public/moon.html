@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="description" content="luxury Moon observer" />
+  <title>月球仪 · Moon Observer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@300;400;500&family=Noto+Serif+SC:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260801a" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/js/OrbitControls.js?v=1"></script>
+  <style>
+    :root {
+      --ink: #070605;
+      --ink-soft: #0e0c0a;
+      --gold: #c9a86c;
+      --gold-dim: #8f7a52;
+      --cream: #f0ebe3;
+      --cream-dim: #9c9488;
+      --glass: rgba(14, 12, 10, 0.62);
+      --glass-border: rgba(201, 168, 108, 0.18);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: var(--ink);
+      color: var(--cream);
+      font-family: 'Noto Sans SC', sans-serif;
+      overflow: hidden;
+    }
+
+    .moon-page {
+      position: relative;
+      width: 100vw; height: 100vh;
+      background:
+        radial-gradient(ellipse at 28% 18%, rgba(201, 168, 108, 0.07) 0%, transparent 40%),
+        radial-gradient(ellipse at 78% 82%, rgba(139, 90, 43, 0.06) 0%, transparent 35%),
+        var(--ink);
+      overflow: hidden;
+    }
+
+    .moon-page::before {
+      content: '';
+      position: absolute; inset: 0;
+      opacity: 0.045;
+      pointer-events: none;
+      z-index: 5;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .moon-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: clamp(18px, 3vh, 32px) clamp(22px, 4vw, 56px);
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(-16px);
+      animation: fadeDown 1s var(--ease-out) 0.4s forwards;
+    }
+    .moon-back {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: var(--cream-dim); font-size: 0.82rem; letter-spacing: 0.12em;
+      text-decoration: none; text-transform: uppercase;
+      transition: color 0.3s, gap 0.3s var(--ease-out);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .moon-back:hover { color: var(--gold); gap: 14px; }
+    .moon-back svg { width: 14px; height: 14px; }
+
+    .moon-brand {
+      text-align: right;
+    }
+    .moon-brand small {
+      display: block; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.62rem; letter-spacing: 0.28em; color: var(--gold-dim);
+      text-transform: uppercase; margin-bottom: 2px;
+    }
+    .moon-brand span {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.05rem; font-weight: 500; letter-spacing: 0.18em;
+      color: var(--cream); opacity: 0.9;
+    }
+
+    .moon-stage {
+      position: absolute; inset: 0;
+      z-index: 1;
+    }
+    .moon-stage canvas {
+      width: 100% !important; height: 100% !important;
+      cursor: grab;
+    }
+    .moon-stage canvas:active { cursor: grabbing; }
+
+    .moon-hint {
+      position: absolute; left: 50%; bottom: 7vh;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--cream-dim); opacity: 0;
+      pointer-events: none; z-index: 10;
+      animation: fadeIn 1s var(--ease-out) 1.6s forwards;
+    }
+    .moon-hint::after {
+      content: ''; display: block; width: 40px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+      margin: 10px auto 0;
+    }
+
+    .moon-panel {
+      position: absolute;
+      left: clamp(22px, 4vw, 56px);
+      bottom: clamp(18px, 4vh, 44px);
+      width: min(360px, calc(100vw - 44px));
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(24px);
+      animation: fadeUp 1s var(--ease-out) 0.8s forwards;
+    }
+    .moon-panel__kicker {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.32em; text-transform: uppercase;
+      color: var(--gold-dim); margin-bottom: 6px;
+    }
+    .moon-panel__title {
+      font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+      font-size: clamp(2.6rem, 7vw, 4.8rem);
+      font-weight: 600; line-height: 0.95;
+      letter-spacing: -0.02em;
+      color: var(--cream);
+      margin-bottom: 2px;
+    }
+    .moon-panel__title .zh {
+      font-family: 'Noto Serif SC', serif;
+      font-weight: 500; margin-right: 0.18em;
+    }
+    .moon-panel__subtitle {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--cream-dim); margin-bottom: 18px;
+    }
+    .moon-panel__grid {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .moon-panel__stat {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 84px;
+      backdrop-filter: blur(14px);
+    }
+    .moon-panel__stat b {
+      display: block; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.55rem; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--gold-dim);
+      margin-bottom: 4px; font-weight: 400;
+    }
+    .moon-panel__stat span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem; color: var(--cream); font-weight: 400;
+    }
+    .moon-panel__desc {
+      font-size: 0.86rem; line-height: 1.7;
+      color: var(--cream-dim); max-width: 320px;
+      font-family: 'Noto Sans SC', sans-serif; font-weight: 300;
+    }
+
+    .moon-vignette {
+      position: absolute; inset: 0; pointer-events: none; z-index: 4;
+      background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(0,0,0,0.55) 100%);
+    }
+
+    @keyframes fadeDown { to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    @media (max-width: 720px) {
+      .moon-panel { left: 50%; transform: translateX(-50%) translateY(24px); bottom: 22px; width: min(92vw, 360px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="moon-page">
+    <div class="moon-top">
+      <a class="moon-back" href="/world.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        返回小世界
+      </a>
+      <div class="moon-brand">
+        <small>Celestial Mechanism</small>
+        <span>月球仪</span>
+      </div>
+    </div>
+
+    <div class="moon-vignette"></div>
+
+    <div class="moon-stage" id="moonStage">
+      <div class="moon-hint" id="moonHint">Drag to rotate · Scroll to zoom</div>
+    </div>
+
+    <div class="moon-panel" id="moonPanel">
+      <div class="moon-panel__kicker">01 · 天然卫星</div>
+      <div class="moon-panel__title"><span class="zh">月球</span>Moon</div>
+      <div class="moon-panel__subtitle">3,474 km · 27.32 天</div>
+      <div class="moon-panel__grid">
+        <div class="moon-panel__stat"><b>直径</b><span>3,474 km</span></div>
+        <div class="moon-panel__stat"><b>公转</b><span>27.32 天</span></div>
+        <div class="moon-panel__stat"><b>温度</b><span>-173 ~ 127°C</span></div>
+      </div>
+      <p class="moon-panel__desc">地球唯一的天然卫星，表面布满古老的撞击坑与广阔的玄武岩平原，没有大气，也没有生命。</p>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const stage = document.getElementById('moonStage');
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x070605, 0.025);
+
+      const camera = new THREE.PerspectiveCamera(40, stage.clientWidth / stage.clientHeight, 0.1, 1200);
+      camera.position.set(0, 0, 4.2);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(stage.clientWidth, stage.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+      if (THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+      stage.insertBefore(renderer.domElement, stage.firstChild);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enableRotate = true;
+      controls.enableZoom = true;
+      controls.enablePan = false;
+      controls.minDistance = 1.8;
+      controls.maxDistance = 9;
+      controls.target.set(0, 0, 0);
+
+      // Starfield
+      function createStarField() {
+        const count = 4200;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(count * 3);
+        const col = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const r = 400 + Math.random() * 500;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+          pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          pos[i * 3 + 2] = r * Math.cos(phi);
+          const t = Math.random();
+          const c = new THREE.Color();
+          if (t < 0.08) c.setHSL(0.08, 0.35, 0.78);
+          else if (t < 0.18) c.setHSL(0.58, 0.22, 0.75);
+          else c.setHSL(0.12, 0.0, 0.72 + Math.random() * 0.2);
+          col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+        }
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const mat = new THREE.PointsMaterial({
+          size: 1.0, vertexColors: true, transparent: true,
+          opacity: 0.78, sizeAttenuation: true, depthWrite: false,
+        });
+        return new THREE.Points(geo, mat);
+      }
+      const starField = createStarField();
+      scene.add(starField);
+
+      // Lights: low-key side light for dramatic relief and terminator
+      const keyLight = new THREE.DirectionalLight(0xfff5e8, 1.45);
+      keyLight.position.set(4.2, 0.6, 2.0);
+      scene.add(keyLight);
+      // Cool earthshine on the dark limb
+      const fillLight = new THREE.DirectionalLight(0x8aa2c4, 0.28);
+      fillLight.position.set(-3.5, 1.2, 4.0);
+      scene.add(fillLight);
+      scene.add(new THREE.AmbientLight(0x2a2c33, 0.18));
+
+      // Generate a normal map from the real albedo texture
+      function buildNormalMapFromAlbedo(img, targetSize = 1024) {
+        const W = targetSize;
+        const H = targetSize / 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, W, H);
+        const imgData = ctx.getImageData(0, 0, W, H);
+        const d = imgData.data;
+        const height = new Float32Array(W * H);
+        for (let i = 0; i < W * H; i++) {
+          const o = i * 4;
+          // luminance
+          const lum = (d[o] * 0.299 + d[o + 1] * 0.587 + d[o + 2] * 0.114) / 255;
+          // dark maria -> lower, bright highlands -> higher
+          height[i] = Math.pow(lum, 1.55) * 0.65;
+        }
+        const out = ctx.createImageData(W, H);
+        const od = out.data;
+        const getH = (x, y) => {
+          x = ((x % W) + W) % W;
+          y = y < 0 ? 0 : (y >= H ? H - 1 : y);
+          return height[y * W + x];
+        };
+        const strength = 3.6;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const hl = getH(x - 1, y), hr = getH(x + 1, y);
+            const hu = getH(x, y - 1), hd = getH(x, y + 1);
+            let nx = (hl - hr) * strength;
+            let ny = (hu - hd) * strength;
+            let nz = 1.0;
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            nx /= len; ny /= len; nz /= len;
+            const o = (y * W + x) * 4;
+            od[o] = (nx * 0.5 + 0.5) * 255;
+            od[o + 1] = (ny * 0.5 + 0.5) * 255;
+            od[o + 2] = (nz * 0.5 + 0.5) * 255;
+            od[o + 3] = 255;
+          }
+        }
+        ctx.putImageData(out, 0, 0);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        return tex;
+      }
+
+      const loader = new THREE.TextureLoader();
+      const moonGroup = new THREE.Group();
+      moonGroup.rotation.z = 0.35; // axial tilt
+      scene.add(moonGroup);
+
+      const moonMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 128, 128),
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.96,
+          metalness: 0.0,
+        })
+      );
+      moonGroup.add(moonMesh);
+
+      loader.load('/images/moon_2k.jpg?v=1', (colorMap) => {
+        colorMap.wrapS = THREE.RepeatWrapping;
+        colorMap.wrapT = THREE.ClampToEdgeWrapping;
+        colorMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        if (THREE.SRGBColorSpace) colorMap.colorSpace = THREE.SRGBColorSpace;
+        else colorMap.encoding = THREE.sRGBEncoding;
+
+        const normalMap = buildNormalMapFromAlbedo(colorMap.image, 1024);
+        normalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        moonMesh.material.map = colorMap;
+        moonMesh.material.normalMap = normalMap;
+        moonMesh.material.normalScale = new THREE.Vector2(0.7, 0.7);
+        moonMesh.material.needsUpdate = true;
+      });
+
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        moonGroup.rotation.y += 0.0012;
+        starField.rotation.y += 0.000015;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      document.getElementById('moonHint').style.opacity = '0';
+
+      window.addEventListener('resize', () => {
+        camera.aspect = stage.clientWidth / stage.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(stage.clientWidth, stage.clientHeight);
+      });
+    })();
+  </script>
+</body>
+</html>

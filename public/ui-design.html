@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="description" content="界面设计 · 相信好的交互应该自然到被忽略，专注于清晰、优雅、可访问的界面。" />
+  <title>界面设计 · UI Design</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@700;800;900&family=Space+Grotesk:wght@400;500;600&family=ZCOOL+XiaoWei&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260801d" />
+  <style>
+    :root { --ud-ease: cubic-bezier(0.16, 1, 0.3, 1); }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Manrope', 'Noto Sans SC', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color .5s var(--ud-ease), color .5s var(--ud-ease);
+      overflow-x: hidden;
+    }
+
+    /* 背景柔光 */
+    .ud-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+    .ud-bg::before, .ud-bg::after {
+      content: ''; position: absolute; width: 46vw; height: 46vw; border-radius: 50%;
+      filter: blur(90px); opacity: .5; transition: opacity .5s var(--ud-ease);
+    }
+    .ud-bg::before { top: -12vw; right: -10vw; background: radial-gradient(circle, rgba(255,107,107,.32), transparent 65%); }
+    .ud-bg::after { bottom: -16vw; left: -12vw; background: radial-gradient(circle, rgba(99,102,241,.26), transparent 65%); }
+    [data-theme='dark'] .ud-bg::before { opacity: .35; }
+    [data-theme='dark'] .ud-bg::after { opacity: .3; }
+
+    .ud-nav {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px clamp(20px, 5vw, 64px);
+      backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+      background: color-mix(in srgb, var(--bg) 58%, transparent);
+      border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+    }
+    .ud-back {
+      display: inline-flex; align-items: center; gap: 9px;
+      text-decoration: none; color: var(--text); opacity: .8;
+      font-size: .82rem; letter-spacing: .04em; font-weight: 600;
+      transition: gap .3s var(--ud-ease), opacity .3s;
+    }
+    .ud-back:hover { gap: 13px; opacity: 1; }
+    .ud-back svg { width: 16px; height: 16px; }
+    .ud-brand { font-family: 'Space Grotesk', sans-serif; font-weight: 600; letter-spacing: .02em; opacity: .9; }
+    .ud-brand b { color: var(--accent); }
+    .ud-theme {
+      width: 42px; height: 42px; border-radius: 50%; cursor: pointer;
+      display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+      background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text);
+      transition: transform .3s var(--ud-ease), background .3s, border-color .3s;
+    }
+    .ud-theme:hover { transform: rotate(18deg) scale(1.06); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+    .ud-theme svg { width: 19px; height: 19px; }
+    .ud-theme .ico-moon { display: none; }
+    [data-theme='dark'] .ud-theme .ico-sun { display: none; }
+    [data-theme='dark'] .ud-theme .ico-moon { display: block; }
+
+    .ud-wrap { max-width: 1100px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 64px) 100px; }
+
+    /* Hero */
+    .ud-hero { padding: clamp(56px, 11vh, 120px) 0 clamp(40px, 7vh, 72px); }
+    .ud-eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: 'Space Grotesk', sans-serif; font-size: .72rem; letter-spacing: .28em;
+      text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 22px;
+    }
+    .ud-eyebrow::before { content: ''; width: 28px; height: 1px; background: var(--accent); display: inline-block; }
+    .ud-hero h1 {
+      font-family: 'Bricolage Grotesque', 'Noto Serif SC', serif;
+      font-size: clamp(2.6rem, 7vw, 5.2rem); line-height: 1.02; font-weight: 800;
+      letter-spacing: -.02em; margin: 0 0 22px; max-width: 14ch;
+    }
+    .ud-hero h1 .grad {
+      background: linear-gradient(110deg, var(--accent), #6366f1 55%, #8b5cf6);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .ud-hero p {
+      font-size: clamp(1rem, 1.6vw, 1.18rem); line-height: 1.75; max-width: 56ch;
+      color: color-mix(in srgb, var(--text) 72%, transparent); font-weight: 400;
+    }
+    .ud-hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 34px; }
+    .ud-btn {
+      display: inline-flex; align-items: center; gap: 9px; text-decoration: none;
+      padding: 13px 24px; border-radius: 999px; font-weight: 600; font-size: .92rem;
+      transition: transform .3s var(--ud-ease), box-shadow .3s, background .3s;
+    }
+    .ud-btn--primary { background: var(--accent); color: #fff; box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 40%, transparent); }
+    .ud-btn--primary:hover { transform: translateY(-3px); box-shadow: 0 18px 40px color-mix(in srgb, var(--accent) 50%, transparent); }
+    .ud-btn--ghost { border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); color: var(--text); }
+    .ud-btn--ghost:hover { transform: translateY(-3px); border-color: var(--accent); color: var(--accent); }
+    .ud-btn svg { width: 16px; height: 16px; }
+
+    /* Section */
+    .ud-section { margin-top: clamp(56px, 9vh, 96px); }
+    .ud-section__head { margin-bottom: 34px; }
+    .ud-section__kicker {
+      font-family: 'Space Grotesk', sans-serif; font-size: .7rem; letter-spacing: .26em;
+      text-transform: uppercase; color: color-mix(in srgb, var(--text) 45%, transparent); margin-bottom: 10px;
+    }
+    .ud-section__title {
+      font-family: 'Bricolage Grotesque', 'Noto Serif SC', serif; font-weight: 700;
+      font-size: clamp(1.7rem, 3.6vw, 2.6rem); letter-spacing: -.01em; margin: 0;
+    }
+    .ud-section__desc { margin-top: 12px; max-width: 60ch; line-height: 1.7; color: color-mix(in srgb, var(--text) 68%, transparent); }
+
+    /* Glass card base */
+    .ud-card {
+      position: relative; border-radius: var(--radius); padding: 26px;
+      background: color-mix(in srgb, var(--text) 4%, transparent);
+      border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+      backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+      transition: transform .4s var(--ud-ease), border-color .4s, box-shadow .4s;
+      overflow: hidden;
+    }
+    .ud-card::before {
+      content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .4s;
+      background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%);
+    }
+    .ud-card:hover { transform: translateY(-6px); border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 26px 60px color-mix(in srgb, var(--text) 12%, transparent); }
+    .ud-card:hover::before { opacity: 1; }
+
+    /* Design system */
+    .ud-system { display: grid; gap: 22px; grid-template-columns: 1.2fr 1fr; align-items: start; }
+    @media (max-width: 720px) { .ud-system { grid-template-columns: 1fr; } }
+    .ud-swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+    .ud-swatch { border-radius: 14px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+    .ud-swatch__c { height: 78px; }
+    .ud-swatch__m { padding: 9px 11px; font-size: .72rem; }
+    .ud-swatch__m b { display: block; font-family: 'Space Grotesk', sans-serif; letter-spacing: .02em; }
+    .ud-swatch__m span { color: color-mix(in srgb, var(--text) 55%, transparent); font-family: 'Space Grotesk', monospace; }
+
+    .ud-typo { display: flex; flex-direction: column; gap: 14px; }
+    .ud-type-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 13px; border-bottom: 1px dashed color-mix(in srgb, var(--text) 12%, transparent); }
+    .ud-type-row:last-child { border-bottom: none; }
+    .ud-type-row .sample { font-size: 1.5rem; line-height: 1.1; }
+    .ud-type-row .meta { font-size: .72rem; color: color-mix(in srgb, var(--text) 52%, transparent); text-align: right; flex-shrink: 0; font-family: 'Space Grotesk', sans-serif; }
+
+    /* Works */
+    .ud-works { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .ud-work {
+      position: relative; border-radius: var(--radius); overflow: hidden; min-height: 280px;
+      display: flex; flex-direction: column; justify-content: flex-end; padding: 24px;
+      border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+      transition: transform .45s var(--ud-ease), box-shadow .45s;
+    }
+    .ud-work:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 30px 64px color-mix(in srgb, var(--text) 18%, transparent); }
+    .ud-work__art { position: absolute; inset: 0; z-index: 0; }
+    .ud-work__art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, rgba(8,10,18,.82)); }
+    .ud-work__body { position: relative; z-index: 1; }
+    .ud-work__tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .ud-tag { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; font-family: 'Space Grotesk', sans-serif; padding: 5px 11px; border-radius: 999px; background: rgba(255,255,255,.16); color: #fff; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.18); }
+    .ud-work h3 { color: #fff; font-family: 'Bricolage Grotesque', 'Noto Serif SC', serif; font-size: 1.4rem; margin: 0 0 7px; font-weight: 600; }
+    .ud-work p { color: rgba(255,255,255,.82); margin: 0; font-size: .88rem; line-height: 1.55; }
+    .ud-work__more { margin-top: 14px; display: inline-flex; align-items: center; gap: 7px; color: #fff; font-size: .82rem; font-weight: 600; opacity: 0; transform: translateY(8px); transition: opacity .4s var(--ud-ease), transform .4s var(--ud-ease); }
+    .ud-work:hover .ud-work__more { opacity: 1; transform: translateY(0); }
+    .ud-work__more svg { width: 14px; height: 14px; }
+
+    /* 作品卡内的 3D 图标球（三维产品展示） */
+    .ud-work--sphere { position: relative; }
+    .ud-work__sphere {
+      position: absolute; inset: 0; z-index: 0;
+      display: grid; place-items: center;
+      perspective: 900px;
+      background: linear-gradient(135deg, rgba(34,211,238,.10), rgba(99,102,241,.12));
+    }
+    .ud-work__sphere::before {
+      content: ''; position: absolute; inset: -30%;
+      background: radial-gradient(circle at 50% 50%, rgba(99,102,241,.22), transparent 60%);
+      filter: blur(26px); opacity: .7; pointer-events: none;
+    }
+    .ud-work__cloud { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+    .ud-work__ring { position: absolute; inset: 0; transform-style: preserve-3d; }
+    .ud-work__icon-card {
+      position: absolute; top: 50%; left: 50%;
+      margin: -14px 0 0 -14px; width: 28px; height: 28px; border-radius: 8px;
+      background: rgba(255,255,255,.94);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.98);
+      box-shadow: 0 6px 16px rgba(99,102,241,.30), 0 1.5px 4px rgba(15,23,42,.14);
+      display: grid; place-items: center;
+      transform-style: preserve-3d; backface-visibility: hidden;
+      will-change: transform, opacity;
+    }
+    .ud-work__icon-card svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    /* 作品卡整体作为「作品展示」入口：可点击跳转新页面 */
+    a.ud-work { text-decoration: none; color: inherit; }
+    a.ud-work:hover { text-decoration: none; }
+    /* 三维产品展示：球作为主视觉，顶部不再压暗，仅底部保留文字可读渐变 */
+    .ud-work--sphere .ud-work__art::after {
+      background: linear-gradient(180deg, rgba(8,10,18,.10) 0%, transparent 40%, rgba(8,10,18,.80) 100%);
+    }
+    .ud-work--sphere .ud-work__icon-card { width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 9px; }
+    .ud-work--sphere .ud-work__icon-card svg { width: 16px; height: 16px; }
+    .ud-work--sphere .ud-work__more { opacity: 1; transform: none; }
+
+    .ud-footer { margin-top: 90px; padding-top: 30px; border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: .82rem; color: color-mix(in srgb, var(--text) 55%, transparent); }
+
+    /* Reveal */
+    .ud-reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s var(--ud-ease), transform .8s var(--ud-ease); }
+    .ud-reveal.is-in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .ud-reveal { opacity: 1; transform: none; transition: none; } .ud-card:hover, .ud-work:hover { transform: none; } }
+  </style>
+</head>
+<body>
+  <div class="ud-bg" aria-hidden="true"></div>
+
+  <header class="ud-nav">
+    <a class="ud-back" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      返回首页
+    </a>
+    <span class="ud-brand">Toolbox<b>·</b>UI</span>
+    <button class="ud-theme" id="udTheme" type="button" aria-label="切换明暗主题" title="切换主题">
+      <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 1 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+  </header>
+
+  <main class="ud-wrap">
+    <section class="ud-hero ud-reveal">
+      <span class="ud-eyebrow">UI Design · 界面设计</span>
+      <h1>好的交互，<br>应该<span class="grad">自然到被忽略</span>。</h1>
+      <p>我相信界面是一种沉默的服务者——它不该抢戏，而是让信息、任务与人之间顺畅流动。这一页收集了我做设计时坚持的几条原则，以及一部分实践中的作品切片。</p>
+      <div class="ud-hero-cta">
+        <a class="ud-btn ud-btn--primary" href="#works">
+          查看作品
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a class="ud-btn ud-btn--ghost" href="/world.html">顺手逛逛小世界</a>
+      </div>
+    </section>
+
+    <section class="ud-section ud-reveal">
+      <div class="ud-section__head">
+        <div class="ud-section__kicker">Design System</div>
+        <h2 class="ud-section__title">一套有呼吸感的语言</h2>
+        <p class="ud-section__desc">从调色到字体，从圆角到间距，统一是为了让变化更有意义。</p>
+      </div>
+      <div class="ud-system">
+        <div class="ud-card">
+          <div class="ud-section__kicker" style="margin-bottom:14px">Palette</div>
+          <div class="ud-swatches">
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#ff6b6b,#ff8e72)"></div><div class="ud-swatch__m"><b>珊瑚红</b><span>Accent</span></div></div>
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"></div><div class="ud-swatch__m"><b>靛紫</b><span>Indigo</span></div></div>
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#22d3ee,#38bdf8)"></div><div class="ud-swatch__m"><b>青蓝</b><span>Cyan</span></div></div>
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#f6f2ee,#e7e0d6)"></div><div class="ud-swatch__m"><b>暖白</b><span>Surface</span></div></div>
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#090d13,#1a2230)"></div><div class="ud-swatch__m"><b>墨夜</b><span>Ink</span></div></div>
+            <div class="ud-swatch"><div class="ud-swatch__c" style="background:linear-gradient(135deg,#c9a86c,#8f7a52)"></div><div class="ud-swatch__m"><b>金铜</b><span>Gold</span></div></div>
+          </div>
+        </div>
+        <div class="ud-card">
+          <div class="ud-section__kicker" style="margin-bottom:14px">Type</div>
+          <div class="ud-typo">
+            <div class="ud-type-row"><span class="sample" style="font-family:'Bricolage Grotesque',serif;font-weight:800">Ag</span><span class="meta">Bricolage<br>标题 Display</span></div>
+            <div class="ud-type-row"><span class="sample" style="font-family:'Manrope',sans-serif;font-weight:600">Ag</span><span class="meta">Manrope<br>正文 Body</span></div>
+            <div class="ud-type-row"><span class="sample" style="font-family:'Playfair Display',serif;font-weight:800">Ag</span><span class="meta">Playfair<br>展示衬线</span></div>
+            <div class="ud-type-row"><span class="sample" style="font-family:'Space Grotesk',sans-serif">Ag</span><span class="meta">Space Grotesk<br>标签 / 技术</span></div>
+            <div class="ud-type-row"><span class="sample" style="font-family:'ZCOOL XiaoWei',serif">永</span><span class="meta">ZCOOL 小薇<br>中文文艺</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ud-section ud-reveal" id="works">
+      <div class="ud-section__head">
+        <div class="ud-section__kicker">Selected Works</div>
+        <h2 class="ud-section__title">几段设计切片</h2>
+        <p class="ud-section__desc">下面是示例作品卡（占位内容，可随时替换为真实项目）。每张都尝试回答一个具体的体验问题。</p>
+      </div>
+      <div class="ud-works">
+        <article class="ud-work">
+          <div class="ud-work__art" style="background:linear-gradient(135deg,#6366f1,#8b5cf6 50%,#22d3ee)"></div>
+          <div class="ud-work__body">
+            <div class="ud-work__tags"><span class="ud-tag">Dashboard</span><span class="ud-tag">Design System</span></div>
+            <h3>数据驾驶舱</h3>
+            <p>把 30+ 指标收敛成一屏可读的节奏，用密度换清晰，而非堆图表。</p>
+            <span class="ud-work__more">查看案例 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
+        </article>
+        <article class="ud-work">
+          <div class="ud-work__art" style="background:linear-gradient(135deg,#ff6b6b,#ff8e72 55%,#f59e0b)"></div>
+          <div class="ud-work__body">
+            <div class="ud-work__tags"><span class="ud-tag">Mobile</span><span class="ud-tag">Reading</span></div>
+            <h3>沉浸式阅读 App</h3>
+            <p>去掉一切干扰，让排版与翻页手感成为产品本身，而不是外壳。</p>
+            <span class="ud-work__more">查看案例 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
+        </article>
+        <article class="ud-work">
+          <div class="ud-work__art" style="background:linear-gradient(135deg,#090d13,#1a2230 60%,#6366f1)"></div>
+          <div class="ud-work__body">
+            <div class="ud-work__tags"><span class="ud-tag">Branding</span><span class="ud-tag">Web</span></div>
+            <h3>品牌视觉规范</h3>
+            <p>从 Logo 到组件库的同一套语言，让团队每次产出都「像一家人」。</p>
+            <span class="ud-work__more">查看案例 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
+        </article>
+        <a class="ud-work ud-work--sphere" href="/work-icon-sphere.html" rel="noopener" aria-label="打开能力星球交互展示">
+          <div class="ud-work__art ud-work__sphere" id="workSphere" aria-hidden="true">
+            <div class="ud-work__cloud" id="workIconCloud">
+              <div class="ud-work__ring">
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="wig1" x1="0.15" y1="0" x2="0.85" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="25%" stop-color="#8b5cf6"/><stop offset="50%" stop-color="#ef4444"/><stop offset="75%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient></defs><path d="M12 3L20 12L12 21L4 12Z" fill="url(#wig1)"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none"><text x="4.5" y="18.5" font-family="'Space Grotesk',system-ui,sans-serif" font-weight="900" font-size="16" fill="#111">AI</text></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke="#e83e8c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13v-2M5.5 14V9M8 15V8M10.5 16V7M13 11v3M15.5 15V8M18 14V9M20.5 13v-2"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="3" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21"/><line x1="3" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="21" y2="12"/><line x1="5.6" y1="5.6" x2="9" y2="9"/><line x1="15" y1="15" x2="18.4" y2="18.4"/><line x1="18.4" y1="5.6" x2="15" y2="9"/><line x1="9" y1="15" x2="5.6" y2="18.4"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="0.8"><circle cx="12" cy="12" r="2.2" fill="#3b82f6"/><circle cx="12" cy="5" r="1.5" fill="#3b82f6"/><circle cx="17.5" cy="8" r="1.5" fill="#3b82f6"/><circle cx="17.5" cy="16" r="1.5" fill="#3b82f6"/><circle cx="12" cy="19" r="1.5" fill="#3b82f6"/><circle cx="6.5" cy="16" r="1.5" fill="#3b82f6"/><circle cx="6.5" cy="8" r="1.5" fill="#3b82f6"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7c-2 0-3.5 1.2-4.5 2.8S6 13 6 15s.8 3.5 2.2 4.8S11 21.5 12 21.5s2.6-.8 3.8-1.7S19 17 19 15s-.8-4-2-5.5S14 7 12 7z"/><path d="M9 9c-1 .8-1.8 2-2 3.5s0 3 .8 4.2 1.8 2 2.8 2.3 1.8-.5 2.5-1.5 1-2.2.5-3.5-.3-4.5-1.3z"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="wig7" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#a78bfa"/><stop offset="50%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#2dd4bf"/></linearGradient></defs><path d="M7 4C4.8 4 3 6 3 8.5v7C3 18 4.8 20 7 20h4c1.5 0 2.8-.8 3.5-2l4.5-5.5c.8-1 .8-2.5 0-3.5L14.5 6C13.8 4.8 12.5 4 11 4H7z" fill="url(#wig7)"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="#111"><rect x="10" y="2" width="2" height="3"/><rect x="14" y="2" width="2" height="3"/><rect x="8" y="5" width="10" height="2"/><rect x="7" y="7" width="12" height="2"/><rect x="9" y="14" width="8" height="2"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M7 17L17 7M14 9l-3 3 2 1M10 15l3-3-2-1"/></svg></div>
+                <div class="ud-work__icon-card"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0113-3" stroke="#a78bfa"/><path d="M16 6l2 3-3 1" stroke="#a78bfa" fill="none"/><path d="M19 12a7 7 0 01-13 3" stroke="#22d3ee"/><path d="M8 18l-2-3 3-1" stroke="#22d3ee" fill="none"/></svg></div>
+              </div>
+            </div>
+          </div>
+          <div class="ud-work__body">
+            <div class="ud-work__tags"><span class="ud-tag">3D</span><span class="ud-tag">WebGL</span></div>
+            <h3>三维产品展示</h3>
+            <p>把参数化模型搬进浏览器，旋转、缩放、换色，体验先于文字。</p>
+            <span class="ud-work__more">查看案例 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <footer class="ud-footer">
+      <span>© <span id="udYear"></span> Mr.zhong · 用代码把想法变成现实</span>
+      <a class="ud-back" href="/" style="margin:0">回到工具箱首页</a>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      // 主题：复用首页的 localStorage key 'theme'，保持跨页一致
+      const root = document.documentElement;
+      const saved = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
+      document.getElementById('udTheme').addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+
+      document.getElementById('udYear').textContent = new Date().getFullYear();
+
+      // 入场动画
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } });
+      }, { threshold: 0.12 });
+      document.querySelectorAll('.ud-reveal').forEach((el) => io.observe(el));
+
+      // 卡片光斑跟随
+      document.querySelectorAll('.ud-card').forEach((card) => {
+        card.addEventListener('mousemove', (e) => {
+          const r = card.getBoundingClientRect();
+          card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+          card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+        });
+      });
+
+      // 作品卡「三维产品展示」内的 3D 图标球
+      (function initWorkSphere() {
+        const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const cloud = document.getElementById('workIconCloud');
+        const wrap = document.getElementById('workSphere');
+        const ring = cloud ? cloud.querySelector('.ud-work__ring') : null;
+        if (!ring || !wrap) return;
+
+        const TARGET = 48;
+        const base = Array.prototype.slice.call(ring.children);
+        for (let i = base.length; i < TARGET; i++) {
+          ring.appendChild(base[i % base.length].cloneNode(true));
+        }
+        const cards = Array.prototype.slice.call(ring.querySelectorAll('.ud-work__icon-card'));
+        const N = cards.length;
+
+        let R = Math.min(wrap.clientWidth, wrap.clientHeight) / 2 * 0.78;
+        const setR = () => { R = Math.min(wrap.clientWidth, wrap.clientHeight) / 2 * 0.78; };
+        setR();
+        if (!reduce) window.addEventListener('resize', setR, { passive: true });
+
+        const PI2 = Math.PI * 2;
+        const golden = (1 + Math.sqrt(5)) / 2;
+        const sph = cards.map((_, i) => {
+          const y = 1 - (i / (N - 1)) * 2;
+          const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+          const theta = PI2 * i / golden;
+          return { x: Math.cos(theta) * radiusAtY, y: y, z: Math.sin(theta) * radiusAtY };
+        });
+
+        let tx = 0, ty = 0, cx = 0, cy = 0;
+        if (!reduce && wrap) {
+          wrap.addEventListener('pointermove', (e) => {
+            const r = wrap.getBoundingClientRect();
+            tx = (e.clientX - (r.left + r.width / 2)) / r.width * 18;
+            ty = (e.clientY - (r.top + r.height / 2)) / r.height * -18;
+          }, { passive: true });
+          wrap.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true });
+        }
+
+        function render(tsec) {
+          cx += (tx - cx) * 0.06;
+          cy += (ty - cy) * 0.06;
+          cloud.style.transform = 'rotateX(' + cy.toFixed(2) + 'deg) rotateY(' + cx.toFixed(2) + 'deg)';
+          const angle = tsec * 0.13;
+          const cosA = Math.cos(angle), sinA = Math.sin(angle);
+          for (let i = 0; i < N; i++) {
+            const p = sph[i];
+            const rx = p.x * cosA - p.z * sinA;
+            const rz = p.x * sinA + p.z * cosA;
+            const sx = rx * R;
+            const sy = -p.y * R;
+            const wz = rz * R;
+            const d = rz;
+            const scale = 0.52 + (d + 1) / 2 * 0.5;
+            const opacity = 0.42 + (d + 1) / 2 * 0.58;
+            const blur = Math.max(0, -d) * 0.85;
+            const card = cards[i];
+            card.style.transform = 'translate3d(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px,' + wz.toFixed(1) + 'px) scale(' + scale.toFixed(3) + ')';
+            card.style.opacity = opacity.toFixed(3);
+            card.style.filter = blur > 0.1 ? 'blur(' + blur.toFixed(2) + 'px)' : 'none';
+            card.style.zIndex = String(Math.round((d + 1) * 100));
+          }
+        }
+
+        if (reduce) {
+          render(0);
+        } else {
+          const t0 = performance.now();
+          (function frame(now) {
+            render((now - t0) / 1000);
+            requestAnimationFrame(frame);
+          })(performance.now());
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

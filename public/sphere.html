@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="description" content=" luxury Earth observer" />
+  <title>地球仪 · Earth Observer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@300;400;500&family=Noto+Serif+SC:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260730h" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/js/OrbitControls.js?v=1"></script>
+  <style>
+    :root {
+      --ink: #070605;
+      --ink-soft: #0e0c0a;
+      --gold: #c9a86c;
+      --gold-dim: #8f7a52;
+      --cream: #f0ebe3;
+      --cream-dim: #9c9488;
+      --glass: rgba(14, 12, 10, 0.62);
+      --glass-border: rgba(201, 168, 108, 0.18);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: var(--ink);
+      color: var(--cream);
+      font-family: 'Noto Sans SC', sans-serif;
+      overflow: hidden;
+    }
+
+    .earth-page {
+      position: relative;
+      width: 100vw; height: 100vh;
+      background:
+        radial-gradient(ellipse at 28% 18%, rgba(201, 168, 108, 0.07) 0%, transparent 40%),
+        radial-gradient(ellipse at 78% 82%, rgba(139, 90, 43, 0.06) 0%, transparent 35%),
+        var(--ink);
+      overflow: hidden;
+    }
+
+    .earth-page::before {
+      content: '';
+      position: absolute; inset: 0;
+      opacity: 0.045;
+      pointer-events: none;
+      z-index: 5;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .earth-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: clamp(18px, 3vh, 32px) clamp(22px, 4vw, 56px);
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(-16px);
+      animation: fadeDown 1s var(--ease-out) 0.4s forwards;
+    }
+    .earth-back {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: var(--cream-dim); font-size: 0.82rem; letter-spacing: 0.12em;
+      text-decoration: none; text-transform: uppercase;
+      transition: color 0.3s, gap 0.3s var(--ease-out);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .earth-back:hover { color: var(--gold); gap: 14px; }
+    .earth-back svg { width: 14px; height: 14px; }
+
+    .earth-brand {
+      text-align: right;
+    }
+    .earth-brand small {
+      display: block; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.62rem; letter-spacing: 0.28em; color: var(--gold-dim);
+      text-transform: uppercase; margin-bottom: 2px;
+    }
+    .earth-brand span {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.05rem; font-weight: 500; letter-spacing: 0.18em;
+      color: var(--cream); opacity: 0.9;
+    }
+
+    .earth-stage {
+      position: absolute; inset: 0;
+      z-index: 1;
+    }
+    .earth-stage canvas {
+      width: 100% !important; height: 100% !important;
+      cursor: grab;
+    }
+    .earth-stage canvas:active { cursor: grabbing; }
+
+    .earth-hint {
+      position: absolute; left: 50%; bottom: 7vh;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--cream-dim); opacity: 0;
+      pointer-events: none; z-index: 10;
+      animation: fadeIn 1s var(--ease-out) 1.6s forwards;
+    }
+    .earth-hint::after {
+      content: ''; display: block; width: 40px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+      margin: 10px auto 0;
+    }
+
+    .earth-panel {
+      position: absolute;
+      left: clamp(22px, 4vw, 56px);
+      bottom: clamp(18px, 4vh, 44px);
+      width: min(360px, calc(100vw - 44px));
+      z-index: 20;
+      opacity: 0;
+      transform: translateY(24px);
+      animation: fadeUp 1s var(--ease-out) 0.8s forwards;
+    }
+    .earth-panel__kicker {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
+      letter-spacing: 0.32em; text-transform: uppercase;
+      color: var(--gold-dim); margin-bottom: 6px;
+    }
+    .earth-panel__title {
+      font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+      font-size: clamp(2.6rem, 7vw, 4.8rem);
+      font-weight: 600; line-height: 0.95;
+      letter-spacing: -0.02em;
+      color: var(--cream);
+      margin-bottom: 2px;
+    }
+    .earth-panel__title .zh {
+      font-family: 'Noto Serif SC', serif;
+      font-weight: 500; margin-right: 0.18em;
+    }
+    .earth-panel__subtitle {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--cream-dim); margin-bottom: 18px;
+    }
+    .earth-panel__grid {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .earth-panel__stat {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 84px;
+      backdrop-filter: blur(14px);
+    }
+    .earth-panel__stat b {
+      display: block; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.55rem; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--gold-dim);
+      margin-bottom: 4px; font-weight: 400;
+    }
+    .earth-panel__stat span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem; color: var(--cream); font-weight: 400;
+    }
+    .earth-panel__desc {
+      font-size: 0.86rem; line-height: 1.7;
+      color: var(--cream-dim); max-width: 320px;
+      font-family: 'Noto Sans SC', sans-serif; font-weight: 300;
+    }
+
+    .earth-vignette {
+      position: absolute; inset: 0; pointer-events: none; z-index: 4;
+      background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(0,0,0,0.55) 100%);
+    }
+
+    @keyframes fadeDown { to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    @media (max-width: 720px) {
+      .earth-panel { left: 50%; transform: translateX(-50%) translateY(24px); bottom: 22px; width: min(92vw, 360px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="earth-page">
+    <div class="earth-top">
+      <a class="earth-back" href="/world.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        返回小世界
+      </a>
+      <div class="earth-brand">
+        <small>Celestial Mechanism</small>
+        <span>地球仪</span>
+      </div>
+    </div>
+
+    <div class="earth-vignette"></div>
+
+    <div class="earth-stage" id="earthStage">
+      <div class="earth-hint" id="earthHint">Drag to rotate · Scroll to zoom</div>
+    </div>
+
+    <div class="earth-panel" id="earthPanel">
+      <div class="earth-panel__kicker">03 · 类地行星</div>
+      <div class="earth-panel__title"><span class="zh">地球</span>Earth</div>
+      <div class="earth-panel__subtitle">12,742 km · 365.25 天</div>
+      <div class="earth-panel__grid">
+        <div class="earth-panel__stat"><b>直径</b><span>12,742 km</span></div>
+        <div class="earth-panel__stat"><b>公转</b><span>365.25 天</span></div>
+        <div class="earth-panel__stat"><b>温度</b><span>-88 ~ 58°C</span></div>
+      </div>
+      <p class="earth-panel__desc">我们唯一的家园，海洋覆盖 71% 的表面，在宇宙中显得格外珍贵。</p>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const stage = document.getElementById('earthStage');
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x070605, 0.025);
+
+      const camera = new THREE.PerspectiveCamera(40, stage.clientWidth / stage.clientHeight, 0.1, 1200);
+      camera.position.set(0, 0, 4.2);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(stage.clientWidth, stage.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      stage.insertBefore(renderer.domElement, stage.firstChild);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enableRotate = true;
+      controls.enableZoom = true;
+      controls.enablePan = false;
+      controls.minDistance = 1.8;
+      controls.maxDistance = 9;
+      controls.target.set(0, 0, 0);
+
+      const ambient = new THREE.AmbientLight(0xffeedd, 0.18);
+      scene.add(ambient);
+      const keyLight = new THREE.DirectionalLight(0xfff4e0, 1.6);
+      keyLight.position.set(5, 2, 7);
+      scene.add(keyLight);
+      const rimLight = new THREE.DirectionalLight(0x6e8cff, 0.35);
+      rimLight.position.set(-5, 0, -6);
+      scene.add(rimLight);
+
+      // Starfield
+      function createStarField() {
+        const count = 4200;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(count * 3);
+        const col = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const r = 400 + Math.random() * 500;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+          pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          pos[i * 3 + 2] = r * Math.cos(phi);
+          const t = Math.random();
+          const c = new THREE.Color();
+          if (t < 0.08) c.setHSL(0.08, 0.35, 0.78);
+          else if (t < 0.18) c.setHSL(0.58, 0.22, 0.75);
+          else c.setHSL(0.12, 0.0, 0.72 + Math.random() * 0.2);
+          col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+        }
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const mat = new THREE.PointsMaterial({
+          size: 1.0, vertexColors: true, transparent: true,
+          opacity: 0.78, sizeAttenuation: true, depthWrite: false,
+        });
+        return new THREE.Points(geo, mat);
+      }
+      const starField = createStarField();
+      scene.add(starField);
+
+      // Atmosphere shader
+      function createAtmosphere(color, radius, coef = 0.65) {
+        return new THREE.Mesh(
+          new THREE.SphereGeometry(radius * 1.04, 64, 64),
+          new THREE.ShaderMaterial({
+            transparent: true, side: THREE.BackSide, blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            uniforms: { glowColor: { value: new THREE.Color(color) }, coef: { value: coef } },
+            vertexShader: 'varying vec3 vNormal; void main(){ vNormal=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+            fragmentShader: 'varying vec3 vNormal; uniform vec3 glowColor; uniform float coef; void main(){ float i=pow(coef-dot(vNormal,vec3(0.0,0.0,1.0)),2.4); gl_FragColor=vec4(glowColor,1.0)*i; }'
+          })
+        );
+      }
+
+      // Earth group with 23.5° tilt
+      const earthGroup = new THREE.Group();
+      earthGroup.rotation.z = THREE.MathUtils.degToRad(23.5);
+      scene.add(earthGroup);
+
+      let earthMat = null;
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load('/images/earth_atmos_2048.jpg?v=1', (dayTex) => {
+        dayTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        textureLoader.load('/images/earth_lights_2048.png?v=1', (nightTex) => {
+          nightTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          earthMat.uniforms.dayTexture.value = dayTex;
+          earthMat.uniforms.nightTexture.value = nightTex;
+          document.getElementById('earthHint').style.opacity = '0';
+        });
+      });
+
+      earthMat = new THREE.ShaderMaterial({
+        uniforms: {
+          dayTexture: { value: null },
+          nightTexture: { value: null },
+          sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vNormal;
+          void main() {
+            vUv = uv;
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: `
+          uniform sampler2D dayTexture;
+          uniform sampler2D nightTexture;
+          uniform vec3 sunDirection;
+          varying vec2 vUv;
+          varying vec3 vNormal;
+          void main() {
+            vec3 dayColor = texture2D(dayTexture, vUv).rgb;
+            vec3 nightColor = texture2D(nightTexture, vUv).rgb;
+            float intensity = dot(vNormal, normalize(sunDirection));
+            float dayMix = smoothstep(-0.12, 0.22, intensity);
+            vec3 lit = dayColor * (0.5 + 1.05 * max(intensity, 0.0));
+            vec3 night = nightColor * 1.5;
+            vec3 color = mix(night, lit, dayMix);
+            float term = 1.0 - abs(intensity);
+            color += vec3(0.10, 0.32, 0.70) * pow(term, 3.0) * 0.45;
+            gl_FragColor = vec4(color, 1.0);
+          }`,
+      });
+
+      const earthMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), earthMat);
+      earthGroup.add(earthMesh);
+
+      const atmo = createAtmosphere(0x4ea3ff, 1, 0.65);
+      earthGroup.add(atmo);
+
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+
+        earthGroup.rotation.y += 0.0015;
+        starField.rotation.y += 0.000015;
+
+        if (earthMat.uniforms.dayTexture.value) {
+          const sunDir = new THREE.Vector3().copy(keyLight.position).normalize();
+          const sunView = sunDir.clone().transformDirection(camera.matrixWorldInverse);
+          earthMat.uniforms.sunDirection.value.copy(sunView);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = stage.clientWidth / stage.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(stage.clientWidth, stage.clientHeight);
+      });
+    })();
+  </script>
+</body>
+</html>

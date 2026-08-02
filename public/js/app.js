@@ -51,6 +51,8 @@
   /* ---------- Landing / 登录入口 ---------- */
   function initLanding() {
     if (!landing) return;
+    if (landing.dataset.inited === '1') return; // 仅初始化一次，避免重复绑定事件/动画
+    landing.dataset.inited = '1';
     if (landingCanvas) {
       landingSeaStop = createOceanScene(landingCanvas, { theme: 'day', meteors: true, meteorColor: '150,230,255', maxPar: 12 });
     }
@@ -128,6 +130,7 @@
 
   function showLanding() {
     if (!landing) return;
+    initLanding(); // 确保落地页交互（进入按钮、主题切换等）已绑定，修复「已登录进入后退出，落地页按钮点击无反应」
     landing.classList.remove('is-leaving');
     landing.setAttribute('aria-hidden', 'false');
     view.innerHTML = '';
@@ -581,26 +584,32 @@
 
   /* ---------- Views ---------- */
   function renderHome(stats, posts) {
-    const bars = (stats.last7 || []).map((d) => {
-      const h = Math.max(4, Math.round((d.count / (Math.max(1, ...stats.last7.map((x) => x.count)))) * 80));
-      return `<div class="bar"><div class="bar__fill" data-h="${h}" style="height:4px"></div><div class="bar__label">${d.date}</div></div>`;
-    }).join('');
-    const recent = (posts || []).slice(0, 3);
     const avatarInner = PROFILE.avatar
       ? `<img class="zh-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
       : `<span class="zh-avatar__initials">${esc(PROFILE.initials)}</span>`;
     const statsHtml = PROFILE.stats.map((s, i) => `<div class="zh-stat" style="--i:${i}"><span class="zh-stat__num">${esc(s.num)}</span><span class="zh-stat__label">${esc(s.label)}</span></div>`).join('');
     const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r, i) => `<li style="--i:${i}">${esc(r)}</li>`)).join('');
-    const cardsHtml = PROFILE.cards.map((c, i) => `<article class="card zh-card zh-card--about" style="--i:${i}"><h3 class="zh-card__title">${esc(c.title)}</h3><p class="zh-card__text">${esc(c.text)}</p></article>`).join('');
-    const statGrid = `
-      <div class="zh-stats-grid">
-        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-total">0</span><span class="zh-stat__label">累计访问</span></div>
-        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-today">0</span><span class="zh-stat__label">今日</span></div>
-        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-unique">0</span><span class="zh-stat__label">独立访客</span></div>
-        <div class="zh-stat zh-stat--sm"><span class="zh-stat__num" id="s-week">0</span><span class="zh-stat__label">近 7 天</span></div>
-      </div>
-      <div class="bars zh-bars">${bars}</div>`;
     const contactUrl = esc((PROFILE.links && (PROFILE.links[1] || PROFILE.links[0])) ? (PROFILE.links[1] || PROFILE.links[0]).url : '#/');
+    const matrix = [
+      { tag: 'PLANET', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>', title: '星球', text: '近距离观察地球与月球，拖动旋转、滚轮缩放，在浏览器里做一次小小的星际旅行。', link: '/world.html', linkText: '探索' },
+      { tag: 'UI DESIGN', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>', title: '界面设计', text: '相信好的交互应该自然到被忽略，专注于清晰、优雅、可访问的界面。', link: '/ui-design.html?v=2', linkText: '查看作品' },
+      { tag: 'LOCAL-FIRST', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>', title: '本地优先', text: '常用工具和数据放在自己掌控的地方，不依赖第三方，数据不出本机。', link: '#/tools', linkText: '浏览工具箱', internal: true },
+      { tag: 'OPEN COLLAB', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>', title: '开放合作', text: '目前开放合作中，欢迎聊聊有趣的项目、技术方案或产品设计。', link: contactUrl, linkText: '发送邮件' },
+    ];
+    const matrixHtml = matrix.map((m, i) => `
+      <article class="card zh-glass-card" data-href="${esc(m.link)}" data-internal="${m.internal ? '1' : ''}" style="--i:${i}" tabindex="0" role="link" aria-label="${esc(m.title)}">
+        <div class="zh-glass-card__glow" aria-hidden="true"></div>
+        <div class="zh-glass-card__head">
+          <div class="zh-glass-card__icon">${m.icon}</div>
+          <span class="zh-glass-card__tag">${esc(m.tag)}</span>
+        </div>
+        <h3 class="zh-glass-card__title">${esc(m.title)}</h3>
+        <p class="zh-glass-card__text">${esc(m.text)}</p>
+        <div class="zh-glass-card__foot">
+          <span class="zh-glass-card__verified">EVIDENCE VERIFIED</span>
+          <span class="zh-glass-card__link">${esc(m.linkText)} →</span>
+        </div>
+      </article>`).join('');
 
     view.innerHTML = `
       <section class="zh-hero stagger" aria-label="个人简介">
@@ -633,37 +642,13 @@
       </section>
 
       <section class="zh-section zh-about" aria-label="关于我">
-        <div class="zh-section__head">
-          <span class="zh-section__num">01</span>
-          <div><h2 class="zh-section__title">关于我</h2><p class="zh-section__sub">一些简单介绍与近况</p></div>
-        </div>
-        <div class="zh-about__grid stagger">
-          <blockquote class="zh-about__quote"><span class="zh-quote__mark">“</span>${esc(PROFILE.quote)}<span class="zh-quote__mark">”</span></blockquote>
-          <div class="zh-about__cards">${cardsHtml}</div>
-          <div class="card zh-about__stats">
-            <h3 class="zh-card__title">站点统计</h3>
-            ${statGrid}
-          </div>
-        </div>
+        <blockquote class="zh-about__quote">${esc(PROFILE.quote)}</blockquote>
+        <div class="zh-matrix-grid stagger">${matrixHtml}</div>
       </section>
 
       <section class="zh-section zh-tools" aria-label="工具箱">
-        <div class="zh-section__head">
-          <span class="zh-section__num">02</span>
-          <div><h2 class="zh-section__title">工具箱</h2><p class="zh-section__sub">亲手做的，本地就能跑</p></div>
-          <a class="zh-link-arrow" href="#/tools" data-link>查看全部</a>
-        </div>
         ${toolChips()}
         <div class="grid grid--tools zh-tools__grid stagger">${toolGridHtml('全部')}</div>
-      </section>
-
-      <section class="zh-section zh-blog" aria-label="最新博客">
-        <div class="zh-section__head">
-          <span class="zh-section__num">03</span>
-          <div><h2 class="zh-section__title">最新博客</h2><p class="zh-section__sub">随手记录的想法与笔记</p></div>
-          <a class="zh-link-arrow" href="#/blog" data-link>全部文章</a>
-        </div>
-        <div class="zh-blog__list stagger">${recent.map((p, i) => postCard(p, i)).join('')}</div>
       </section>`;
     bindReveal();
     runHomeMotion(stats);
@@ -2053,15 +2038,7 @@ C:\\path\\to\\python -m venv .venv
   }
 
   function runHomeMotion(stats) {
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    countUp(document.getElementById('s-total'), stats.total, !reduce);
-    countUp(document.getElementById('s-today'), stats.today, !reduce);
-    countUp(document.getElementById('s-unique'), stats.unique, !reduce);
-    countUp(document.getElementById('s-week'), (stats.last7 || []).reduce((a, b) => a + b.count, 0), !reduce);
-    if (reduce) return;
-    requestAnimationFrame(() => {
-      document.querySelectorAll('.bar__fill').forEach((b) => { b.style.height = (b.getAttribute('data-h') || 4) + 'px'; });
-    });
+    // 站点统计卡片已移除：保留空函数避免调用处报错
   }
 
   function initHomeFx() {
@@ -2092,6 +2069,38 @@ C:\\path\\to\\python -m venv .venv
         btn.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
       });
       btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
+    });
+
+    bindMatrixCards();
+  }
+
+  function bindMatrixCards() {
+    document.querySelectorAll('.zh-glass-card[data-href]').forEach((card) => {
+      if (card.dataset.matrixBound) return;
+      card.dataset.matrixBound = '1';
+      const go = (e) => {
+        if (e.button !== 0) return;
+        const href = card.getAttribute('data-href');
+        if (!href) return;
+        if (card.dataset.internal === '1' && href.startsWith('#')) {
+          e.preventDefault();
+          location.hash = href.replace(/^#/, '');
+        } else if (card.dataset.internal === '1') {
+          e.preventDefault();
+          location.hash = href;
+        } else {
+          e.preventDefault();
+          // 站内链接（/ 开头）与 mailto/tel 直接在当前页打开，避免多开标签页；
+          // 仅跨域外部 http(s) 链接才新开。
+          if (/^https?:\/\//i.test(href) && !href.startsWith(location.origin)) {
+            window.open(href, '_blank', 'noopener,noreferrer');
+          } else {
+            location.href = href;
+          }
+        }
+      };
+      card.addEventListener('click', go);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
     });
   }
 
