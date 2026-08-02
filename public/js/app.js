@@ -144,37 +144,37 @@
 
     /* ---------- 插画风格动态海洋（Landing / 主页共用） ---------- */
   const SEA = {
-    // 蓝青白天海：清爽蓝青天空 + 通透青绿海面（去粉橙）
+    // 暖奶油「白天海」：蜜桃天空 + 温润奶油海面
     day: {
-      skyTop: '#bfe3f2',      // 顶部淡蓝青
-      skyMid: '#9fd2ea',      // 中上部天蓝
-      skyHorizon: '#d3eef2',  // 海平线极淡青白
-      seaFar: '#6bb8d4',      // 远处海水（亮）
-      seaMid: '#4aaec8',      // 中段海水
-      seaNear: '#2a9db8',     // 近处海水（深一点但仍通透）
-      seaDeep: '#1a7a94',     // 最深处
-      foam: 'rgba(255,255,255,',
-      glitter: 'rgba(255,255,255,',
-      ripple: 'rgba(255,255,255,',
-      haze: 'rgba(220,245,250,0.45)', // 海天交界清冷薄雾
+      skyTop: '#fcefdf',      // 顶部淡奶油
+      skyMid: '#f8e2cb',      // 中上部蜜桃
+      skyHorizon: '#fdf5ea',  // 海平线极淡乳白
+      seaFar: '#f3ddbf',      // 远处奶油海水（亮）
+      seaMid: '#eccaa2',      // 中段暖沙
+      seaNear: '#e0b88a',     // 近处蜜糖
+      seaDeep: '#d2a374',     // 最深处焦糖
+      foam: 'rgba(255,252,244,',
+      glitter: 'rgba(255,248,235,',
+      ripple: 'rgba(255,250,240,',
+      haze: 'rgba(247,224,196,0.5)', // 海天交界暖雾
       stars: false,
-      island: 'rgba(70,100,110,0.28)',
+      island: 'rgba(190,158,120,0.30)',
     },
-    // 夜晚版：更深沉的夜海，流星在此最显眼
+    // 暖夜「摩卡海」：深沉暖棕夜空 + 暖金微光，流星在此最显眼
     night: {
-      skyTop: '#05080f',      // 近乎墨黑的夜空
-      skyMid: '#0a1626',      // 深蓝夜幕
-      skyHorizon: '#123048',  // 海平线处透出一点微光
-      seaFar: '#1a4e6e',      // 远处海水（仍保留一点青）
-      seaMid: '#103a54',
-      seaNear: '#0c2e44',
-      seaDeep: '#05161f',     // 近处深到几乎与夜空相连
-      foam: 'rgba(200,240,255,',
-      glitter: 'rgba(190,235,255,',
-      ripple: 'rgba(180,230,255,',
-      haze: 'rgba(140,200,255,0.16)',
+      skyTop: '#140f0a',      // 暖近黑
+      skyMid: '#1f1610',      // 深摩卡
+      skyHorizon: '#36271c',  // 海平线透出暖光
+      seaFar: '#3a2a1e',      // 远处暖棕海水
+      seaMid: '#2c2017',
+      seaNear: '#211810',
+      seaDeep: '#160f09',     // 近处深到几乎与夜空相连
+      foam: 'rgba(247,224,196,',
+      glitter: 'rgba(240,210,178,',
+      ripple: 'rgba(235,205,170,',
+      haze: 'rgba(150,110,70,0.18)',
       stars: true,
-      island: 'rgba(12,26,38,0.6)',
+      island: 'rgba(20,14,10,0.6)',
     },
   };
 
@@ -266,7 +266,7 @@
     function drawStars(p) {
       for (const s of stars) {
         ctx.globalAlpha = s.a * (0.55 + 0.45 * Math.sin(t * 1.1 + s.tw));
-        ctx.fillStyle = '#cfe8ff';
+        ctx.fillStyle = '#fbedd6';
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
@@ -335,7 +335,7 @@
       // 底层柔和光柱
       const bg = ctx.createLinearGradient(cx - W * 0.18, hy, cx + W * 0.18, hy);
       bg.addColorStop(0, 'rgba(255,255,255,0)');
-      bg.addColorStop(0.5, p.stars ? 'rgba(210,245,255,0.08)' : 'rgba(255,255,255,0.12)');
+      bg.addColorStop(0.5, p.stars ? 'rgba(242,214,182,0.08)' : 'rgba(255,246,228,0.16)');
       bg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = bg;
       ctx.fillRect(cx - W * 0.18, hy, W * 0.36, depth);
@@ -582,77 +582,199 @@
     </article>`;
   }
 
+  /* ---------- Catalog helpers ---------- */
+  function posterCard(item, i = 0) {
+    const cover = item.cover || 'linear-gradient(135deg, var(--accent), var(--accent-2))';
+    const isClickable = item.link && item.link !== '#';
+    const hrefAttr = isClickable ? ` data-href="${esc(item.link)}" data-internal="${item.internal ? '1' : ''}"` : '';
+    return `<article class="card zh-poster-card"${hrefAttr} tabindex="0" role="${isClickable ? 'link' : 'article'}" aria-label="${esc(item.title)}" style="--i:${i}">
+      <div class="zh-poster-card__cover" style="background: ${cover}">
+        <div class="zh-poster-card__icon">${item.icon}</div>
+        ${item.tag ? `<span class="zh-poster-card__tag">${esc(item.tag)}</span>` : ''}
+      </div>
+      <div class="zh-poster-card__body">
+        <h3 class="zh-poster-card__title">${esc(item.title)}</h3>
+        <p class="zh-poster-card__desc">${esc(item.desc)}</p>
+      </div>
+    </article>`;
+  }
+
+  // 首页 Bento 玻璃卡片（vibe coding）
+  function bentoCard(item, cls, i = 0) {
+    const isClickable = item.link && item.link !== '#';
+    const hrefAttr = isClickable ? ` data-href="${esc(item.link)}" data-internal="${item.internal ? '1' : ''}"` : '';
+    const glow = item.glow || 'var(--accent)';
+    const go = isClickable ? `<span class="zh-bento__go">进入 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>` : '';
+    return `<article class="card zh-bento__card ${cls}"${hrefAttr} tabindex="0" role="${isClickable ? 'link' : 'article'}" aria-label="${esc(item.title)}" style="--i:${i}">
+      <span class="zh-bento__glow" style="background:${glow}" aria-hidden="true"></span>
+      <div class="zh-bento__icon">${item.icon}</div>
+      <span class="zh-bento__tag">${esc(item.tag)}</span>
+      <h3 class="zh-bento__title">${esc(item.title)}</h3>
+      <p class="zh-bento__desc">${esc(item.desc)}</p>
+      ${go}
+    </article>`;
+  }
+
+  function renderCatalogContent(cat, opts = {}) {
+    const avatarInner = PROFILE.avatar
+      ? `<img class="zh-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
+      : `<span class="zh-avatar__initials">${esc(PROFILE.initials)}</span>`;
+    const contactUrl = esc((PROFILE.links && (PROFILE.links[1] || PROFILE.links[0])) ? (PROFILE.links[1] || PROFILE.links[0]).url : '#/');
+
+    const CATS = {
+      home: {
+        title: '推荐',
+        sub: '精选内容与个人简介',
+        hero: true,
+        items: [
+          { tag: 'PLANET', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>', title: '星球', desc: '近距离观察地球与月球，拖动旋转、滚轮缩放，在浏览器里做一次小小的星际旅行。', link: '/world.html', cover: 'linear-gradient(135deg,#0ea5e9,#1e3a8a)' },
+          { tag: 'UI DESIGN', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>', title: '界面设计', desc: '相信好的交互应该自然到被忽略，专注于清晰、优雅、可访问的界面。', link: '/ui-design.html?v=2', cover: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
+          { tag: 'LOCAL-FIRST', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>', title: '本地优先', desc: '常用工具和数据放在自己掌控的地方，不依赖第三方，数据不出本机。', link: '#/tools', cover: 'linear-gradient(135deg,#10b981,#059669)', internal: true },
+          { tag: 'OPEN COLLAB', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>', title: '开放合作', desc: '目前开放合作中，欢迎聊聊有趣的项目、技术方案或产品设计。', link: contactUrl, cover: 'linear-gradient(135deg,#8b5cf6,#6366f1)' },
+        ],
+      },
+      media: {
+        title: '媒体工具',
+        sub: `${window.TOOLS.length} 个工具 · 全部本地运行`,
+        items: window.TOOLS.map((t, i) => ({
+          tag: t.category,
+          icon: t.icon,
+          title: t.title,
+          desc: t.desc,
+          link: t.fullPage ? '#/tools/' + t.id : '#open-tool:' + t.id,
+          cover: t.cover || 'linear-gradient(135deg, var(--accent), var(--accent-2))',
+          internal: true,
+          toolId: t.id,
+          fullPage: t.fullPage,
+        })),
+      },
+      planet: {
+        title: '三维星球',
+        sub: '可交互的 3D 星球展示',
+        items: [
+          { tag: 'EARTH', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>', title: '地球', desc: '高清地球纹理 + 云层 + 城市夜灯，支持旋转与缩放。', link: '/sphere.html?v=7', cover: 'linear-gradient(135deg,#3b82f6,#0ea5e9)' },
+          { tag: 'MOON', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>', title: '月球', desc: '2K 月球表面贴图，沉浸式观察。', link: '/moon.html', cover: 'linear-gradient(135deg,#94a3b8,#475569)' },
+          { tag: 'SPHERE', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>', title: '能力星球', desc: '48 个能力图标构成的交互式 3D 球面，可拖拽旋转。', link: '/work-icon-sphere.html', cover: 'linear-gradient(135deg,#ec4899,#8b5cf6)' },
+        ],
+      },
+      ui: {
+        title: '界面设计',
+        sub: '作品集与交互展示',
+        items: [
+          { tag: 'PORTFOLIO', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>', title: '界面设计作品集', desc: '界面设计展示页，包含设计原则、组件与作品入口。', link: '/ui-design.html?v=2', cover: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
+          { tag: 'SPHERE', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>', title: '能力星球', desc: '将能力图标以 3D 球面形式呈现，可交互探索。', link: '/work-icon-sphere.html', cover: 'linear-gradient(135deg,#ec4899,#8b5cf6)' },
+        ],
+      },
+      about: {
+        title: '关于我',
+        sub: '个人简介与联系方式',
+        hero: true,
+        items: [
+          { tag: 'BIO', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>', title: '个人简介', desc: PROFILE.bio, link: contactUrl, cover: 'linear-gradient(135deg,#10b981,#059669)' },
+          { tag: 'ROLE', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>', title: '角色', desc: PROFILE.role, link: null, cover: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
+          { tag: 'QUOTE', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3"></path></svg>', title: '一句话', desc: PROFILE.quote, link: null, cover: 'linear-gradient(135deg,#8b5cf6,#6366f1)' },
+        ],
+      },
+    };
+
+    const data = CATS[cat] || CATS.home;
+    const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r, i) => `<li style="--i:${i}">${esc(r)}</li>`)).join('');
+    const statsHtml = PROFILE.stats.map((s, i) => `<div class="zh-stat" style="--i:${i}"><span class="zh-stat__num">${esc(s.num)}</span><span class="zh-stat__label">${esc(s.label)}</span></div>`).join('');
+
+    const heroHtml = '';
+
+    const gridHtml = data.items.map((item, i) => {
+      if (item.toolId) {
+        return `<article class="card tool-card${item.fullPage ? '' : ' is-soon'}" data-tool="${esc(item.toolId)}" tabindex="0" role="button" aria-label="${esc(item.title)}" style="--i:${i}">
+          <div class="card__icon">${item.icon}</div>
+          <h3 class="card__title">${esc(item.title)}</h3>
+          <p class="card__desc">${esc(item.desc)}</p>
+          <span class="card__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        </article>`;
+      }
+      return posterCard(item, i);
+    }).join('');
+
+    return `
+      ${heroHtml}
+      <section class="zh-catalog__section" aria-labelledby="cat-title-${cat}">
+        <div class="zh-catalog__header">
+          <h2 id="cat-title-${cat}" class="zh-catalog__title">${esc(data.title)}</h2>
+          <span class="zh-catalog__sub">${esc(data.sub)}</span>
+        </div>
+        <div class="zh-catalog__grid stagger">${gridHtml}</div>
+      </section>`;
+  }
+
+  function bindCatalogTabs(container) {
+    if (!container) return;
+    container.addEventListener('click', (e) => {
+      const item = e.target.closest('.zh-tab');
+      if (!item || item.classList.contains('is-active')) return;
+      e.preventDefault();
+      const cat = item.getAttribute('data-cat');
+      const main = document.getElementById('zhBrowseMain');
+      if (!main) return;
+      container.querySelectorAll('.zh-tab').forEach((el) => {
+        const active = el === item;
+        el.classList.toggle('is-active', active);
+        el.setAttribute('aria-selected', String(active));
+      });
+      main.innerHTML = renderCatalogContent(cat);
+      bindReveal();
+      bindMatrixCards();
+      if (main.scrollTo) main.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
+  /* ---------- 3D Lanyard 工牌（iframe 挂载到首页右上角） ---------- */
+  const lanyardIframeHtml = `
+    <div class="zh-lanyard-dock" aria-label="3D 工牌">
+      <iframe src="/lanyard/dist/index.html?v=8" loading="eager" title="3D 工牌" frameborder="0" allowtransparency="true"></iframe>
+    </div>`;
+
   /* ---------- Views ---------- */
   function renderHome(stats, posts) {
     const avatarInner = PROFILE.avatar
       ? `<img class="zh-avatar__img" src="${esc(PROFILE.avatar)}" alt="${esc(PROFILE.name)}">`
       : `<span class="zh-avatar__initials">${esc(PROFILE.initials)}</span>`;
-    const statsHtml = PROFILE.stats.map((s, i) => `<div class="zh-stat" style="--i:${i}"><span class="zh-stat__num">${esc(s.num)}</span><span class="zh-stat__label">${esc(s.label)}</span></div>`).join('');
-    const rolePills = (PROFILE.role.split('·').map((r) => r.trim()).filter(Boolean).map((r, i) => `<li style="--i:${i}">${esc(r)}</li>`)).join('');
     const contactUrl = esc((PROFILE.links && (PROFILE.links[1] || PROFILE.links[0])) ? (PROFILE.links[1] || PROFILE.links[0]).url : '#/');
-    const matrix = [
-      { tag: 'PLANET', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>', title: '星球', text: '近距离观察地球与月球，拖动旋转、滚轮缩放，在浏览器里做一次小小的星际旅行。', link: '/world.html', linkText: '探索' },
-      { tag: 'UI DESIGN', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>', title: '界面设计', text: '相信好的交互应该自然到被忽略，专注于清晰、优雅、可访问的界面。', link: '/ui-design.html?v=2', linkText: '查看作品' },
-      { tag: 'LOCAL-FIRST', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>', title: '本地优先', text: '常用工具和数据放在自己掌控的地方，不依赖第三方，数据不出本机。', link: '#/tools', linkText: '浏览工具箱', internal: true },
-      { tag: 'OPEN COLLAB', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>', title: '开放合作', text: '目前开放合作中，欢迎聊聊有趣的项目、技术方案或产品设计。', link: contactUrl, linkText: '发送邮件' },
+
+    const heroHtml = `
+      <section class="zh-hero stagger" aria-label="个人简介">
+        <span class="zh-hero__pill"><span class="zh-hero__pill-dot" aria-hidden="true"></span> 在线 · 欢迎来到我的小世界</span>
+        <h1 class="zh-hero__title">你好，我是 <span class="grad">${esc(PROFILE.name)}</span></h1>
+        <p class="zh-hero__lead">${esc(PROFILE.bio)}</p>
+        <div class="zh-hero__avatar">${avatarInner}</div>
+        <div class="zh-hero__actions">
+          <a class="zh-btn zh-btn--primary zh-magnetic" href="#/tools" data-link>浏览工具箱</a>
+          <a class="zh-btn zh-btn--ghost zh-magnetic" href="${contactUrl}">联系我</a>
+        </div>
+      </section>`;
+
+    const icoGlobe = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle><path d="M2 12h6m8 0h6M12 2v6m0 8v6"></path></svg>';
+    const icoUI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>';
+    const icoSphere = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg>';
+    const icoMedia = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"></rect><circle cx="9" cy="9" r="2.4"></circle><path d="M21 15l-5-5L5 21"></path></svg>';
+    const icoAbout = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+    const icoLocal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>';
+
+    const bento = [
+      { tag: 'PLANET', icon: icoGlobe, title: '星球', desc: '在浏览器里近距离观察地球与月球——拖拽旋转、滚轮缩放，来一场小小的星际旅行。', link: '/world.html', glow: 'radial-gradient(circle, #38bdf8, transparent 70%)', cls: 'zh-bento__card--xl' },
+      { tag: 'UI DESIGN', icon: icoUI, title: '界面设计', desc: '相信好的交互应该自然到被忽略。专注清晰、优雅、可访问的界面。', link: '/ui-design.html', glow: 'radial-gradient(circle, #fb923c, transparent 70%)', cls: 'zh-bento__card--wide' },
+      { tag: 'SPHERE', icon: icoSphere, title: '能力星球', desc: '48 个能力图标组成的交互球体，可拖拽探索我的技能地图。', link: '/work-icon-sphere.html', glow: 'radial-gradient(circle, #f472b6, transparent 70%)', cls: 'zh-bento__card--s' },
+      { tag: 'MEDIA', icon: icoMedia, title: '媒体工具', desc: '去水印、离境、Word 图片导出，全部本地运行。', link: '#/tools', internal: true, glow: 'radial-gradient(circle, #34d399, transparent 70%)', cls: 'zh-bento__card--s' },
+      { tag: 'ABOUT', icon: icoAbout, title: '关于我', desc: '全栈开发者 / 界面设计师，正在开放有趣的合作。', link: contactUrl, glow: 'radial-gradient(circle, #fbbf24, transparent 70%)', cls: 'zh-bento__card--wide' },
+      { tag: 'LOCAL-FIRST', icon: icoLocal, title: '本地优先', desc: '常用工具与数据都握在自己手里，不出本机。', link: '#/tools', internal: true, glow: 'radial-gradient(circle, #a78bfa, transparent 70%)', cls: 'zh-bento__card--wide' },
     ];
-    const matrixHtml = matrix.map((m, i) => `
-      <article class="card zh-glass-card" data-href="${esc(m.link)}" data-internal="${m.internal ? '1' : ''}" style="--i:${i}" tabindex="0" role="link" aria-label="${esc(m.title)}">
-        <div class="zh-glass-card__glow" aria-hidden="true"></div>
-        <div class="zh-glass-card__head">
-          <div class="zh-glass-card__icon">${m.icon}</div>
-          <span class="zh-glass-card__tag">${esc(m.tag)}</span>
-        </div>
-        <h3 class="zh-glass-card__title">${esc(m.title)}</h3>
-        <p class="zh-glass-card__text">${esc(m.text)}</p>
-        <div class="zh-glass-card__foot">
-          <span class="zh-glass-card__verified">EVIDENCE VERIFIED</span>
-          <span class="zh-glass-card__link">${esc(m.linkText)} →</span>
-        </div>
-      </article>`).join('');
+    const bentoHtml = bento.map((b, i) => bentoCard(b, b.cls, i)).join('');
 
     view.innerHTML = `
-      <section class="zh-hero stagger" aria-label="个人简介">
-        <div class="zh-hero__grid">
-          <div class="zh-hero__name-col">
-            <span class="zh-hero__label">你好，我是</span>
-            <h1 class="zh-hero__name">
-              <span class="zh-hero__name-main">${esc(PROFILE.name)}</span>
-              <span class="zh-hero__name-line" aria-hidden="true"></span>
-            </h1>
-            <ul class="zh-hero__roles">${rolePills}</ul>
-            <p class="zh-hero__bio">${esc(PROFILE.bio)}</p>
-            <div class="zh-hero__actions">
-              <a class="zh-btn zh-btn--primary zh-magnetic" href="#/tools" data-link>浏览工具箱</a>
-              <a class="zh-btn zh-btn--ghost zh-magnetic" href="${contactUrl}">联系我</a>
-            </div>
-          </div>
-          <div class="zh-hero__visual-col">
-            <div class="zh-avatar">
-              <div class="zh-avatar__frame">${avatarInner}</div>
-              <div class="zh-avatar__ring" aria-hidden="true"></div>
-              <div class="zh-avatar__orb" aria-hidden="true"></div>
-              <div class="zh-avatar__status"><span class="zh-avatar__status-dot" aria-hidden="true"></span><span>${esc(PROFILE.status)}</span></div>
-            </div>
-            <div class="zh-hero__shape zh-hero__shape--circle" aria-hidden="true"></div>
-            <div class="zh-hero__shape zh-hero__shape--line" aria-hidden="true"></div>
-          </div>
-        </div>
-        <div class="zh-hero__stats">${statsHtml}</div>
-      </section>
-
-      <section class="zh-section zh-about" aria-label="关于我">
-        <blockquote class="zh-about__quote">${esc(PROFILE.quote)}</blockquote>
-        <div class="zh-matrix-grid stagger">${matrixHtml}</div>
-      </section>
-
-      <section class="zh-section zh-tools" aria-label="工具箱">
-        ${toolChips()}
-        <div class="grid grid--tools zh-tools__grid stagger">${toolGridHtml('全部')}</div>
-      </section>`;
+      ${heroHtml}
+      ${lanyardIframeHtml}
+      <section class="zh-bento stagger" aria-label="精选内容">${bentoHtml}</section>`;
     bindReveal();
-    runHomeMotion(stats);
-    initHomeFx();
+    bindMatrixCards();
   }
 
   function renderTools() {
@@ -2075,7 +2197,7 @@ C:\\path\\to\\python -m venv .venv
   }
 
   function bindMatrixCards() {
-    document.querySelectorAll('.zh-glass-card[data-href]').forEach((card) => {
+    document.querySelectorAll('.zh-glass-card[data-href], .zh-poster-card[data-href], .zh-bento__card[data-href]').forEach((card) => {
       if (card.dataset.matrixBound) return;
       card.dataset.matrixBound = '1';
       const go = (e) => {
@@ -2134,14 +2256,10 @@ C:\\path\\to\\python -m venv .venv
   }
 
   /* ---------- Init ---------- */
-  // 启动主页动态海洋壁纸背景（全局固定；主题跟随切换，鼠标可互动：涟漪/光斑/视差）
+  // 杂志编辑风：主页改用 CSS 静态纸纹 + 印刷网格背景，不再启动动态海洋 canvas
   const homeSeaCanvas = document.getElementById('homeSea');
-  // 主页动态海洋壁纸：跟随主题切换（修复后暗色真正生效），并加入更显眼的流星
-  try {
-    if (homeSeaCanvas) homeSeaCtl = createOceanScene(homeSeaCanvas, { theme: 'auto', meteors: true, meteorColor: '150,230,255', meteorMax: 7, meteorRate: 0.020, meteorBoost: 1.45, maxPar: 14 });
-  } catch (e) {
-    console.error('Home sea init failed:', e);
-  }
+  // 保留 homeSeaCanvas 引用以便将来复用；当前背景由 styles.css 的 body::before/::after 提供
+  if (homeSeaCanvas) homeSeaCanvas.style.display = 'none';
 
   // 全局错误兜底：若渲染过程中抛出异常，至少在页面上显示出来，而不是一面空白
   window.addEventListener('error', (e) => {
